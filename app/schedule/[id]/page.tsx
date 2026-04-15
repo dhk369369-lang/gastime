@@ -90,7 +90,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
       const uniqueDates = [...new Set(lessonData.map((l: any) => l.date))].sort()
       setDates(uniqueDates)
 
-      // 과정 목록 (row_order 순서대로)
       const seen = new Set<string>()
       const rows: CourseRow[] = []
       lessonData.forEach((l: any) => {
@@ -200,8 +199,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
           <table className="border-collapse text-xs" style={{ minWidth: 'max-content' }}>
             <thead>
               <tr>
-                <th class<th className="border border-gray-300 bg-gray-100 p-2 text-center" rowSpan={2}>강의실</th>
-        <th className="border border-gray-300 bg-gray-100 p-2 text-center" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
+                <th className="border border-gray-300 bg-gray-100 p-2 text-center" rowSpan={2}>강의실</th>
+                <th className="border border-gray-300 bg-gray-100 p-2 text-center" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
                 {dates.map(d => (
                   <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold" colSpan={PERIODS.length}>
                     {formatDate(d)}
