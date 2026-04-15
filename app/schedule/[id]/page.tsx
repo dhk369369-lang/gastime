@@ -200,8 +200,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
           <table className="border-collapse text-xs" style={{ minWidth: 'max-content' }}>
             <thead>
               <tr>
-                <th className="border border-gray-300 bg-gray-100 p-2 sticky left-0 z-20 text-center" rowSpan={2}>강의실</th>
-                <th className="border border-gray-300 bg-gray-100 p-2 sticky left-10 z-20 text-center" rowSpan={2}>과정</th>
+                <th class<th className="border border-gray-300 bg-gray-100 p-2 text-center" rowSpan={2}>강의실</th>
+        <th className="border border-gray-300 bg-gray-100 p-2 text-center" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
                 {dates.map(d => (
                   <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold" colSpan={PERIODS.length}>
                     {formatDate(d)}
@@ -230,10 +230,10 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
                 return (
                   <tr key={idx} className="hover:bg-gray-50">
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold sticky left-0 z-10 whitespace-nowrap">
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold whitespace-nowrap">
                       {course.classroom}
                     </td>
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center sticky left-10 z-10 whitespace-nowrap">
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center" style={{maxWidth: '120px', wordBreak: 'keep-all'}}>
                       {course.course_name}
                     </td>
                     {dates.map(d =>
