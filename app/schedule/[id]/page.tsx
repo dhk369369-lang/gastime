@@ -86,10 +86,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
     if (lessonData) {
       setLessons(lessonData as any)
-
       const uniqueDates = [...new Set(lessonData.map((l: any) => l.date))].sort()
       setDates(uniqueDates)
-
       const seen = new Set<string>()
       const rows: CourseRow[] = []
       lessonData.forEach((l: any) => {
@@ -110,14 +108,13 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     setInstructors(data || [])
   }
 
-  const getLesson = (classroom: string, course_name: string, date: string, period: number) => {
-    return lessons.find(l =>
+  const getLesson = (classroom: string, course_name: string, date: string, period: number) =>
+    lessons.find(l =>
       l.classroom === classroom &&
       l.course_name === course_name &&
       l.date === date &&
       l.period === period
     )
-  }
 
   const isMyLesson = (lesson: Lesson) => {
     if (!user) return false
@@ -199,8 +196,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
           <table className="border-collapse text-xs" style={{ minWidth: 'max-content' }}>
             <thead>
               <tr>
-                <th className="border border-gray-300 bg-gray-100 p-2 text-center" rowSpan={2}>강의실</th>
-                <th className="border border-gray-300 bg-gray-100 p-2 text-center" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
+                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-0 z-20" rowSpan={2}>강의실</th>
+                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-10 z-20" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
                 {dates.map(d => (
                   <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold" colSpan={PERIODS.length}>
                     {formatDate(d)}
@@ -229,17 +226,16 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
                 return (
                   <tr key={idx} className="hover:bg-gray-50">
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold whitespace-nowrap">
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold whitespace-nowrap sticky left-0 z-10">
                       {course.classroom}
                     </td>
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center" style={{maxWidth: '120px', wordBreak: 'keep-all'}}>
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center sticky left-10 z-10" style={{maxWidth: '120px', wordBreak: 'keep-all'}}>
                       {course.course_name}
                     </td>
                     {dates.map(d =>
                       PERIODS.map(p => {
                         const lesson = getLesson(course.classroom, course.course_name, d, p)
                         const mine = lesson ? isMyLesson(lesson) : false
-
                         return (
                           <td key={`${d}-${p}`} className="border border-gray-100 p-1 min-w-16">
                             {lesson ? (
