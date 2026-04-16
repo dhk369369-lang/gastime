@@ -27,13 +27,12 @@ const TYPE_COLORS: Record<string, string> = {
   empty: 'bg-white text-gray-200',
 }
 
-// 셀 크기 상수
-const COL_CLASSROOM = 36  // 강의실 열 너비
-const COL_COURSE = 108    // 과정 열 너비
-const COL_PERIOD = 72     // 교시 열 너비
-const ROW_DATE = 28       // 날짜 행 높이
-const ROW_PERIOD = 28     // 교시 행 높이
-const ROW_LESSON = 56     // 수업 행 높이
+const COL_CLASSROOM = 36
+const COL_COURSE = 108
+const COL_PERIOD = 72
+const ROW_DATE = 28
+const ROW_PERIOD = 28
+const ROW_LESSON = 56
 
 export default function ScheduleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -52,11 +51,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const [sending, setSending] = useState(false)
   const router = useRouter()
 
-  // 스크롤 동기화용 ref
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const topHeaderRef = useRef<HTMLDivElement>(null)   // 날짜+교시 고정 헤더
-  const leftHeaderRef = useRef<HTMLDivElement>(null)  // 강의실+과정 고정 열
-  const bodyRef = useRef<HTMLDivElement>(null)        // 실제 수업 내용
+  const topHeaderRef = useRef<HTMLDivElement>(null)
+  const leftHeaderRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -66,7 +62,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     fetchInstructors()
   }, [])
 
-  // 스크롤 동기화
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollLeft, scrollTop } = e.currentTarget
     if (topHeaderRef.current) topHeaderRef.current.scrollLeft = scrollLeft
@@ -112,7 +107,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     lessons.find(l => l.classroom === classroom && l.course_name === course_name && l.date === date && l.period === period)
 
   const isMyLesson = (lesson: Lesson) =>
-    user && (lesson.instructor1?.id === user.id || lesson.instructor2?.id === user.id)
+    !!(user && (lesson.instructor1?.id === user.id || lesson.instructor2?.id === user.id))
 
   const handleLessonClick = (lesson: Lesson) => {
     if (lesson.subject_type === 'empty' || lesson.subject_type === 'lunch') return
@@ -143,7 +138,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     return `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`
   }
 
-  // 보이는 과정 행 필터
   const visibleRows = courseRows.filter(course => {
     if (viewMode === 'all') return true
     return dates.some(d => PERIODS.some(p => {
@@ -152,9 +146,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     }))
   })
 
-  const totalCols = dates.length * PERIODS.length
-  const contentWidth = totalCols * COL_PERIOD
-  const contentHeight = visibleRows.length * ROW_LESSON
+  const contentWidth = dates.length * PERIODS.length * COL_PERIOD
   const fixedColWidth = COL_CLASSROOM + COL_COURSE
 
   if (!user) return null
@@ -178,81 +170,82 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
       </div>
 
       {loading ? <p className="text-center text-gray-400 mt-8">불러오는 중...</p> : (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* 그리드 레이아웃 */}
-          <div className="flex flex-1 overflow-hidden">
+        <div className="flex overflow-hidden" style={{height: 'calc(100vh - 88px)'}}>
 
-            {/* 왼쪽 고정 열 (강의실 + 과정) */}
-            <div className="flex-shrink-0 flex flex-col" style={{width: fixedColWidth}}>
-              {/* 빈 코너 (날짜+교시 높이만큼) */}
-              <div style={{height: ROW_DATE + ROW_PERIOD, flexShrink: 0}}
-                className="bg-gray-100 border-b border-r border-gray-300 flex items-end">
-                <div style={{width: COL_CLASSROOM}} className="text-center text-xs font-bold p-1 border-r border-gray-300">강의실</div>
-                <div style={{width: COL_COURSE}} className="text-center text-xs font-bold p-1">과정</div>
-              </div>
-              {/* 강의실+과정 목록 (세로 스크롤 동기화) */}
-              <div ref={leftHeaderRef} className="overflow-hidden flex-1" style={{overflowY: 'hidden'}}>
-                {visibleRows.map((course, idx) => (
-                  <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                    <div style={{width: COL_CLASSROOM}} className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center">
-                      {course.classroom}
-                    </div>
-                    <div style={{width: COL_COURSE}} className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight" style={{wordBreak: 'keep-all'}}>
-                      {course.course_name}
-                    </div>
+          {/* 왼쪽 고정 열 */}
+          <div className="flex-shrink-0 flex flex-col border-r border-gray-300" style={{width: fixedColWidth}}>
+            {/* 코너 */}
+            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end"
+              style={{height: ROW_DATE + ROW_PERIOD}}>
+              <div className="text-center text-xs font-bold p-1 border-r border-gray-300" style={{width: COL_CLASSROOM}}>강의실</div>
+              <div className="text-center text-xs font-bold p-1" style={{width: COL_COURSE}}>과정</div>
+            </div>
+            {/* 강의실+과정 목록 */}
+            <div ref={leftHeaderRef} className="flex-1 overflow-hidden">
+              {visibleRows.map((course, idx) => (
+                <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
+                  <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center"
+                    style={{width: COL_CLASSROOM}}>
+                    {course.classroom}
+                  </div>
+                  <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight"
+                    style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
+                    {course.course_name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 오른쪽 스크롤 영역 */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* 날짜+교시 고정 헤더 */}
+            <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
+              {/* 날짜 행 */}
+              <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
+                {dates.map(d => (
+                  <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300"
+                    style={{width: COL_PERIOD * PERIODS.length}}>
+                    {formatDate(d)}
                   </div>
                 ))}
               </div>
+              {/* 교시 행 */}
+              <div className="flex" style={{height: ROW_PERIOD, width: contentWidth}}>
+                {dates.map(d => PERIODS.map(p => (
+                  <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs text-gray-500 bg-gray-50 border-r border-gray-200"
+                    style={{width: COL_PERIOD}}>
+                    {PERIOD_LABELS[p]}
+                  </div>
+                )))}
+              </div>
             </div>
 
-            {/* 오른쪽 스크롤 영역 */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* 상단 고정 헤더 (날짜 + 교시) */}
-              <div ref={topHeaderRef} className="overflow-hidden flex-shrink-0" style={{overflowX: 'hidden'}}>
-                {/* 날짜 행 */}
-                <div className="flex border-b border-gray-300" style={{height: ROW_DATE, width: contentWidth}}>
-                  {dates.map(d => (
-                    <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300"
-                      style={{width: COL_PERIOD * PERIODS.length}}>
-                      {formatDate(d)}
-                    </div>
-                  ))}
-                </div>
-                {/* 교시 행 */}
-                <div className="flex border-b border-gray-300" style={{height: ROW_PERIOD, width: contentWidth}}>
-                  {dates.map(d => PERIODS.map(p => (
-                    <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs text-gray-500 bg-gray-50 border-r border-gray-200"
-                      style={{width: COL_PERIOD}}>
-                      {PERIOD_LABELS[p]}
-                    </div>
-                  )))}
-                </div>
-              </div>
-
-              {/* 수업 내용 (가로+세로 스크롤) */}
-              <div className="flex-1 overflow-auto" onScroll={handleScroll}>
-                <div style={{width: contentWidth, height: contentHeight}}>
-                  {visibleRows.map((course, idx) => (
-                    <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                      {dates.map(d => PERIODS.map(p => {
-                        const lesson = getLesson(course.classroom, course.course_name, d, p)
-                        const mine = lesson ? isMyLesson(lesson) : false
-                        return (
-                          <div key={`${d}-${p}`} className="flex-shrink-0 p-0.5 border-r border-gray-100" style={{width: COL_PERIOD}}>
-                            {lesson ? (
-                              <div onClick={() => handleLessonClick(lesson)}
-                                className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''}`}>
-                                <div className="font-medium leading-tight">{lesson.subject}</div>
-                                {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
-                                {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
-                              </div>
-                            ) : <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>}
-                          </div>
-                        )
-                      }))}
-                    </div>
-                  ))}
-                </div>
+            {/* 수업 내용 스크롤 */}
+            <div className="flex-1 overflow-auto" onScroll={handleScroll}>
+              <div style={{width: contentWidth}}>
+                {visibleRows.map((course, idx) => (
+                  <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
+                    {dates.map(d => PERIODS.map(p => {
+                      const lesson = getLesson(course.classroom, course.course_name, d, p)
+                      const mine = lesson ? isMyLesson(lesson) : false
+                      return (
+                        <div key={`${d}-${p}`} className="flex-shrink-0 p-0.5 border-r border-gray-100" style={{width: COL_PERIOD}}>
+                          {lesson ? (
+                            <div onClick={() => handleLessonClick(lesson)}
+                              className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''}`}>
+                              <div className="font-medium leading-tight">{lesson.subject}</div>
+                              {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
+                              {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
+                            </div>
+                          ) : (
+                            <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>
+                          )}
+                        </div>
+                      )
+                    }))}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
