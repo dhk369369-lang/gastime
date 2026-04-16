@@ -174,7 +174,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 상단 헤더 */}
       <div className="sticky top-0 bg-white shadow-sm z-30 px-4 py-3">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push('/schedule')} className="text-blue-500 text-sm">← 뒤로</button>
@@ -196,17 +195,17 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         <div className="overflow-x-auto p-2">
           <table className="border-collapse text-xs" style={{ minWidth: 'max-content' }}>
             <thead>
-              {/* 날짜 행 - sticky top (상단 헤더 높이만큼 offset) */}
               <tr>
-                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-0 top-0 z-30" rowSpan={2}>강의실</th>
-                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-10 top-0 z-30" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
+                {/* 강의실: 너비 30px 고정 */}
+                <th className="border border-gray-300 bg-gray-100 p-1 text-center sticky left-0 top-0 z-30" style={{width: '30px', minWidth: '30px'}} rowSpan={2}>강의실</th>
+                {/* 과정: 너비 90px 고정 */}
+                <th className="border border-gray-300 bg-gray-100 p-1 text-center sticky left-8 top-0 z-30" style={{width: '90px', minWidth: '90px', maxWidth: '90px'}} rowSpan={2}>과정</th>
                 {dates.map(d => (
                   <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold sticky top-0 z-20" colSpan={PERIODS.length}>
                     {formatDate(d)}
                   </th>
                 ))}
               </tr>
-              {/* 교시 행 - sticky */}
               <tr>
                 {dates.map(d =>
                   PERIODS.map(p => (
@@ -229,10 +228,10 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
                 return (
                   <tr key={idx} className="hover:bg-gray-50">
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold whitespace-nowrap sticky left-0 z-10">
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold sticky left-0 z-10" style={{width: '30px', minWidth: '30px'}}>
                       {course.classroom}
                     </td>
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center sticky left-10 z-10" style={{maxWidth: '120px', wordBreak: 'keep-all'}}>
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center sticky left-8 z-10" style={{width: '90px', minWidth: '90px', maxWidth: '90px', wordBreak: 'keep-all'}}>
                       {course.course_name}
                     </td>
                     {dates.map(d =>
