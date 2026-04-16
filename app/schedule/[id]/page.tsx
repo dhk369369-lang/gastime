@@ -47,6 +47,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const [showModal, setShowModal] = useState(false)
   const [requestType, setRequestType] = useState<'exchange' | 'substitute'>('substitute')
   const [targetInstructorId, setTargetInstructorId] = useState('')
+  const [myExchangeLessonId, setMyExchangeLessonId] = useState('') // 교환 시 내가 내줄 수업
   const [instructors, setInstructors] = useState<Instructor[]>([])
   const [sending, setSending] = useState(false)
   const router = useRouter()
@@ -109,26 +110,62 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const isMyLesson = (lesson: Lesson) =>
     !!(user && (lesson.instructor1?.id === user.id || lesson.instructor2?.id === user.id))
 
+  // 내 수업 목록 (선택한 수업 제외, 중식/빈 교시 제외)
+  const myLessons = lessons.filter(l =>
+    isMyLesson(l) &&
+    l.subject_type !== 'lunch' &&
+    l.subject_type !== 'empty' &&
+    l.id !== selectedLesson?.id
+  )
+
   const handleLessonClick = (lesson: Lesson) => {
     if (lesson.subject_type === 'empty' || lesson.subject_type === 'lunch') return
     if (!isMyLesson(lesson)) return
-    setSelectedLesson(lesson); setShowModal(true)
+    setSelectedLesson(lesson)
+    setRequestType('substitute')
+    setTargetInstructorId('')
+    setMyExchangeLessonId('')
+    setShowModal(true)
   }
 
   const handleSendRequest = async () => {
     if (!targetInstructorId) return alert('대상 강사를 선택해주세요.')
     if (!selectedLesson) return
+    if (requestType === 'exchange' && !myExchangeLessonId) return alert('교환할 내 수업을 선택해주세요.')
+
     setSending(true)
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const lessonDate = new Date(selectedLesson.date)
     if (lessonDate <= today) { alert('당일 또는 지난 수업은 요청할 수 없습니다.'); setSending(false); return }
+
+    // 교환 시 내가 내줄 수업도 당일 이전인지 체크
+    if (requestType === 'exchange' && myExchangeLessonId) {
+      const myExchangeLesson = lessons.find(l => l.id === myExchangeLessonId)
+      if (myExchangeLesson) {
+        const exchangeDate = new Date(myExchangeLesson.date)
+        if (exchangeDate <= today) { alert('당일 또는 지난 수업은 교환 요청할 수 없습니다.'); setSending(false); return }
+      }
+    }
+
     const expires = new Date(); expires.setHours(23, 59, 59, 999)
     const { error } = await supabase.from('requests').insert({
-      type: requestType, status: 'pending', requester_id: user.id,
-      target_id: targetInstructorId, lesson_id: selectedLesson.id, expires_at: expires.toISOString(),
+      type: requestType,
+      status: 'pending',
+      requester_id: user.id,
+      target_id: targetInstructorId,
+      lesson_id: selectedLesson.id,
+      target_lesson_id: requestType === 'exchange' ? myExchangeLessonId : null,
+      expires_at: expires.toISOString(),
     })
+
     if (error) alert('요청 실패: ' + error.message)
-    else { alert('요청이 전송됐어요!'); setShowModal(false); setSelectedLesson(null); setTargetInstructorId('') }
+    else {
+      alert('요청이 전송됐어요!')
+      setShowModal(false)
+      setSelectedLesson(null)
+      setTargetInstructorId('')
+      setMyExchangeLessonId('')
+    }
     setSending(false)
   }
 
@@ -174,13 +211,11 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
           {/* 왼쪽 고정 열 */}
           <div className="flex-shrink-0 flex flex-col border-r border-gray-300" style={{width: fixedColWidth}}>
-            {/* 코너 */}
             <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end"
               style={{height: ROW_DATE + ROW_PERIOD}}>
               <div className="text-center text-xs font-bold p-1 border-r border-gray-300" style={{width: COL_CLASSROOM}}>강의실</div>
               <div className="text-center text-xs font-bold p-1" style={{width: COL_COURSE}}>과정</div>
             </div>
-            {/* 강의실+과정 목록 */}
             <div ref={leftHeaderRef} className="flex-1 overflow-hidden">
               {visibleRows.map((course, idx) => (
                 <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
@@ -199,9 +234,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
           {/* 오른쪽 스크롤 영역 */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* 날짜+교시 고정 헤더 */}
             <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
-              {/* 날짜 행 */}
               <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
                 {dates.map(d => (
                   <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300"
@@ -210,7 +243,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 ))}
               </div>
-              {/* 교시 행 */}
               <div className="flex" style={{height: ROW_PERIOD, width: contentWidth}}>
                 {dates.map(d => PERIODS.map(p => (
                   <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs text-gray-500 bg-gray-50 border-r border-gray-200"
@@ -221,7 +253,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
 
-            {/* 수업 내용 스크롤 */}
             <div className="flex-1 overflow-auto" onScroll={handleScroll}>
               <div style={{width: contentWidth}}>
                 {visibleRows.map((course, idx) => (
@@ -252,6 +283,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
+      {/* 요청 모달 */}
       {showModal && selectedLesson && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
           <div className="bg-white rounded-t-2xl p-6 w-full max-w-md">
@@ -259,17 +291,57 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             <p className="text-sm text-gray-500 mb-4">
               {formatDate(selectedLesson.date)} {PERIOD_LABELS[selectedLesson.period]} · {selectedLesson.subject}
             </p>
+
+            {/* 요청 타입 선택 */}
             <div className="flex gap-2 mb-4">
-              <button onClick={() => setRequestType('substitute')} className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'substitute' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>🙋 대리강의</button>
-              <button onClick={() => setRequestType('exchange')} className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'exchange' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>🔄 교환</button>
+              <button onClick={() => { setRequestType('substitute'); setMyExchangeLessonId('') }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'substitute' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                🙋 대리강의
+              </button>
+              <button onClick={() => setRequestType('exchange')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'exchange' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                🔄 교환
+              </button>
             </div>
-            <select value={targetInstructorId} onChange={(e) => setTargetInstructorId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4">
+
+            {/* 교환 시: 내가 내줄 수업 선택 */}
+            {requestType === 'exchange' && (
+              <div className="mb-4">
+                <p className="text-xs text-gray-500 mb-1">내가 내줄 수업 선택</p>
+                <select
+                  value={myExchangeLessonId}
+                  onChange={(e) => setMyExchangeLessonId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">수업 선택</option>
+                  {myLessons.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {formatDate(l.date)} {PERIOD_LABELS[l.period]} · {l.subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* 대상 강사 선택 */}
+            <select
+              value={targetInstructorId}
+              onChange={(e) => setTargetInstructorId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
+            >
               <option value="">강사 선택</option>
-              {instructors.filter(i => i.id !== user.id).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+              {instructors.filter(i => i.id !== user.id).map(i => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
             </select>
+
             <div className="flex gap-2">
-              <button onClick={() => { setShowModal(false); setTargetInstructorId('') }} className="flex-1 bg-gray-100 text-gray-600 rounded-lg py-3 text-sm">취소</button>
-              <button onClick={handleSendRequest} disabled={sending} className="flex-1 bg-blue-600 text-white rounded-lg py-3 text-sm disabled:opacity-50">{sending ? '전송 중...' : '요청 보내기'}</button>
+              <button onClick={() => { setShowModal(false); setTargetInstructorId(''); setMyExchangeLessonId('') }}
+                className="flex-1 bg-gray-100 text-gray-600 rounded-lg py-3 text-sm">취소</button>
+              <button onClick={handleSendRequest} disabled={sending}
+                className="flex-1 bg-blue-600 text-white rounded-lg py-3 text-sm disabled:opacity-50">
+                {sending ? '전송 중...' : '요청 보내기'}
+              </button>
             </div>
           </div>
         </div>
