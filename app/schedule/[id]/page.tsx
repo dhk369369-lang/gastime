@@ -181,8 +181,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   if (!user) return null
 
-  const dateRowTop = headerHeight
-  const periodRowTop = headerHeight + 33
+  const dateRowTop = 88
+  const periodRowTop = 88 + 33
 
   return (
     <div className="min-h-screen bg-gray-50">
