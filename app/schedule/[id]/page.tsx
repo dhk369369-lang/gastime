@@ -11,7 +11,6 @@ interface Lesson {
   subject_type: string; classroom: string; course_name: string
   row_order: number
   instructor1: Instructor | null; instructor2: Instructor | null
-  is_absent1: boolean; is_absent2: boolean
 }
 interface CourseRow { classroom: string; course_name: string; row_order: number }
 
@@ -24,8 +23,8 @@ const PERIOD_LABELS: Record<number, string> = {
 const TYPE_COLORS: Record<string, string> = {
   star: 'bg-blue-100 text-blue-800',
   theory: 'bg-green-100 text-green-800',
-  lunch: 'bg-gray-100 text-gray-500',
-  empty: 'bg-white text-gray-200',
+  lunch: 'bg-gray-100 text-gray-600',
+  empty: 'bg-white text-gray-300',
 }
 
 const COL_CLASSROOM = 36
@@ -77,7 +76,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     const { data: lessonData } = await supabase
       .from('lessons')
       .select(`id, date, period, subject, subject_type, classroom, course_name, row_order,
-        is_absent1, is_absent2,
         instructor1:instructor1_id(id, name), instructor2:instructor2_id(id, name)`)
       .eq('schedule_id', id)
       .order('row_order').order('date').order('period')
@@ -112,18 +110,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const isMyLesson = (lesson: Lesson) =>
     !!(user && (lesson.instructor1?.id === user.id || lesson.instructor2?.id === user.id))
 
-  // 특정 강사가 특정 날짜/교시에 부재인지 확인
-  const isAbsent = (instructorId: string, date: string, period: number): boolean => {
-    const lesson = lessons.find(l =>
-      l.date === date && l.period === period &&
-      (l.instructor1?.id === instructorId || l.instructor2?.id === instructorId)
-    )
-    if (!lesson) return false
-    if (lesson.instructor1?.id === instructorId && lesson.is_absent1) return true
-    if (lesson.instructor2?.id === instructorId && lesson.is_absent2) return true
-    return false
-  }
-
   const myLessons = lessons.filter(l =>
     isMyLesson(l) &&
     l.subject_type !== 'lunch' &&
@@ -147,59 +133,17 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     if (requestType === 'exchange' && !myExchangeLessonId) return alert('교환할 내 수업을 선택해주세요.')
 
     setSending(true)
-
-    // 당일 이전 체크
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const lessonDate = new Date(selectedLesson.date)
-    if (lessonDate <= today) {
-      alert('당일 또는 지난 수업은 요청할 수 없습니다.')
-      setSending(false); return
-    }
+    if (lessonDate <= today) { alert('당일 또는 지난 수업은 요청할 수 없습니다.'); setSending(false); return }
 
-    // ── 부재 검증 ──────────────────────────────────────────
-    if (requestType === 'substitute') {
-      // 대리강의: 상대 강사가 내 수업 날짜/교시에 부재인지
-      if (isAbsent(targetInstructorId, selectedLesson.date, selectedLesson.period)) {
-        alert('해당 강사는 그 날짜/교시에 휴가·출장 중이라 대리강의 요청이 불가합니다.')
-        setSending(false); return
-      }
-      // 내가 그 날짜에 부재인지 (본인도 요청 불가)
-      if (isAbsent(user.id, selectedLesson.date, selectedLesson.period)) {
-        alert('본인이 해당 날짜/교시에 휴가·출장 중이라 요청이 불가합니다.')
-        setSending(false); return
-      }
-    }
-
-    if (requestType === 'exchange') {
+    if (requestType === 'exchange' && myExchangeLessonId) {
       const myExchangeLesson = lessons.find(l => l.id === myExchangeLessonId)
       if (myExchangeLesson) {
         const exchangeDate = new Date(myExchangeLesson.date)
-        if (exchangeDate <= today) {
-          alert('당일 또는 지난 수업은 교환 요청할 수 없습니다.')
-          setSending(false); return
-        }
-        // 상대 강사가 내 수업 날짜/교시에 부재인지
-        if (isAbsent(targetInstructorId, selectedLesson.date, selectedLesson.period)) {
-          alert('상대 강사가 해당 날짜/교시에 휴가·출장 중이라 교환 요청이 불가합니다.')
-          setSending(false); return
-        }
-        // 내가 내줄 수업 날짜/교시에 상대 강사가 부재인지
-        if (isAbsent(targetInstructorId, myExchangeLesson.date, myExchangeLesson.period)) {
-          alert('상대 강사가 교환할 수업 날짜/교시에 휴가·출장 중이라 교환 요청이 불가합니다.')
-          setSending(false); return
-        }
-        // 내가 부재인지
-        if (isAbsent(user.id, selectedLesson.date, selectedLesson.period)) {
-          alert('본인이 해당 날짜/교시에 휴가·출장 중이라 요청이 불가합니다.')
-          setSending(false); return
-        }
-        if (isAbsent(user.id, myExchangeLesson.date, myExchangeLesson.period)) {
-          alert('본인이 교환할 수업 날짜/교시에 휴가·출장 중이라 요청이 불가합니다.')
-          setSending(false); return
-        }
+        if (exchangeDate <= today) { alert('당일 또는 지난 수업은 교환 요청할 수 없습니다.'); setSending(false); return }
       }
     }
-    // ────────────────────────────────────────────────────────
 
     const expires = new Date(); expires.setHours(23, 59, 59, 999)
     const { error } = await supabase.from('requests').insert({
@@ -261,40 +205,55 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
       {loading ? <p className="text-center text-gray-400 mt-8">불러오는 중...</p> : (
         <div className="flex overflow-hidden" style={{height: 'calc(100vh - 88px)'}}>
+
+          {/* 왼쪽 고정 열 */}
           <div className="flex-shrink-0 flex flex-col border-r border-gray-300" style={{width: fixedColWidth}}>
-            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end"
+            {/* 헤더 */}
+            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-200 flex items-end"
               style={{height: ROW_DATE + ROW_PERIOD}}>
-              <div className="text-center text-xs font-bold p-1 border-r border-gray-300" style={{width: COL_CLASSROOM}}>강의실</div>
-              <div className="text-center text-xs font-bold p-1" style={{width: COL_COURSE}}>과정</div>
+              <div className="text-center text-xs font-bold p-1 border-r border-gray-300 text-gray-800" style={{width: COL_CLASSROOM}}>강의실</div>
+              <div className="text-center text-xs font-bold p-1 text-gray-800" style={{width: COL_COURSE}}>과정</div>
             </div>
+            {/* 데이터 */}
             <div ref={leftHeaderRef} className="flex-1 overflow-hidden">
               {visibleRows.map((course, idx) => (
                 <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                  <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center"
-                    style={{width: COL_CLASSROOM}}>{course.classroom}</div>
-                  <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight"
-                    style={{width: COL_COURSE, wordBreak: 'keep-all'}}>{course.course_name}</div>
+                  <div className="flex items-center justify-center text-xs font-bold bg-gray-100 border-r border-gray-200 p-1 text-center text-gray-800"
+                    style={{width: COL_CLASSROOM}}>
+                    {course.classroom}
+                  </div>
+                  <div className="flex items-center justify-center text-xs bg-gray-100 p-1 text-center leading-tight text-gray-800"
+                    style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
+                    {course.course_name}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
+          {/* 오른쪽 스크롤 영역 */}
           <div className="flex-1 flex flex-col overflow-hidden">
+            {/* 날짜+교시 헤더 */}
             <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
               <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
                 {dates.map(d => (
-                  <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300"
-                    style={{width: COL_PERIOD * PERIODS.length}}>{formatDate(d)}</div>
+                  <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300 text-gray-800"
+                    style={{width: COL_PERIOD * PERIODS.length}}>
+                    {formatDate(d)}
+                  </div>
                 ))}
               </div>
               <div className="flex" style={{height: ROW_PERIOD, width: contentWidth}}>
                 {dates.map(d => PERIODS.map(p => (
-                  <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs text-gray-500 bg-gray-50 border-r border-gray-200"
-                    style={{width: COL_PERIOD}}>{PERIOD_LABELS[p]}</div>
+                  <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs font-bold text-gray-700 bg-gray-100 border-r border-gray-200"
+                    style={{width: COL_PERIOD}}>
+                    {PERIOD_LABELS[p]}
+                  </div>
                 )))}
               </div>
             </div>
 
+            {/* 수업 내용 */}
             <div className="flex-1 overflow-auto" onScroll={handleScroll}>
               <div style={{width: contentWidth}}>
                 {visibleRows.map((course, idx) => (
@@ -308,8 +267,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                             <div onClick={() => handleLessonClick(lesson)}
                               className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''}`}>
                               <div className="font-medium leading-tight">{lesson.subject}</div>
-                              {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
-                              {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
+                              {lesson.instructor1?.name && <div className="leading-tight">{lesson.instructor1.name}</div>}
+                              {lesson.instructor2?.name && <div className="leading-tight">{lesson.instructor2.name}</div>}
                             </div>
                           ) : (
                             <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>
