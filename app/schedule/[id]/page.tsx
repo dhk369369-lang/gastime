@@ -11,6 +11,7 @@ interface Lesson {
   subject_type: string; classroom: string; course_name: string
   row_order: number
   instructor1: Instructor | null; instructor2: Instructor | null
+  is_absent1: boolean; is_absent2: boolean
 }
 interface CourseRow { classroom: string; course_name: string; row_order: number }
 
@@ -47,7 +48,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const [showModal, setShowModal] = useState(false)
   const [requestType, setRequestType] = useState<'exchange' | 'substitute'>('substitute')
   const [targetInstructorId, setTargetInstructorId] = useState('')
-  const [myExchangeLessonId, setMyExchangeLessonId] = useState('') // 교환 시 내가 내줄 수업
+  const [myExchangeLessonId, setMyExchangeLessonId] = useState('')
   const [instructors, setInstructors] = useState<Instructor[]>([])
   const [sending, setSending] = useState(false)
   const router = useRouter()
@@ -76,6 +77,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     const { data: lessonData } = await supabase
       .from('lessons')
       .select(`id, date, period, subject, subject_type, classroom, course_name, row_order,
+        is_absent1, is_absent2,
         instructor1:instructor1_id(id, name), instructor2:instructor2_id(id, name)`)
       .eq('schedule_id', id)
       .order('row_order').order('date').order('period')
@@ -110,7 +112,18 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const isMyLesson = (lesson: Lesson) =>
     !!(user && (lesson.instructor1?.id === user.id || lesson.instructor2?.id === user.id))
 
-  // 내 수업 목록 (선택한 수업 제외, 중식/빈 교시 제외)
+  // 특정 강사가 특정 날짜/교시에 부재인지 확인
+  const isAbsent = (instructorId: string, date: string, period: number): boolean => {
+    const lesson = lessons.find(l =>
+      l.date === date && l.period === period &&
+      (l.instructor1?.id === instructorId || l.instructor2?.id === instructorId)
+    )
+    if (!lesson) return false
+    if (lesson.instructor1?.id === instructorId && lesson.is_absent1) return true
+    if (lesson.instructor2?.id === instructorId && lesson.is_absent2) return true
+    return false
+  }
+
   const myLessons = lessons.filter(l =>
     isMyLesson(l) &&
     l.subject_type !== 'lunch' &&
@@ -134,18 +147,59 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     if (requestType === 'exchange' && !myExchangeLessonId) return alert('교환할 내 수업을 선택해주세요.')
 
     setSending(true)
+
+    // 당일 이전 체크
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const lessonDate = new Date(selectedLesson.date)
-    if (lessonDate <= today) { alert('당일 또는 지난 수업은 요청할 수 없습니다.'); setSending(false); return }
+    if (lessonDate <= today) {
+      alert('당일 또는 지난 수업은 요청할 수 없습니다.')
+      setSending(false); return
+    }
 
-    // 교환 시 내가 내줄 수업도 당일 이전인지 체크
-    if (requestType === 'exchange' && myExchangeLessonId) {
+    // ── 부재 검증 ──────────────────────────────────────────
+    if (requestType === 'substitute') {
+      // 대리강의: 상대 강사가 내 수업 날짜/교시에 부재인지
+      if (isAbsent(targetInstructorId, selectedLesson.date, selectedLesson.period)) {
+        alert('해당 강사는 그 날짜/교시에 휴가·출장 중이라 대리강의 요청이 불가합니다.')
+        setSending(false); return
+      }
+      // 내가 그 날짜에 부재인지 (본인도 요청 불가)
+      if (isAbsent(user.id, selectedLesson.date, selectedLesson.period)) {
+        alert('본인이 해당 날짜/교시에 휴가·출장 중이라 요청이 불가합니다.')
+        setSending(false); return
+      }
+    }
+
+    if (requestType === 'exchange') {
       const myExchangeLesson = lessons.find(l => l.id === myExchangeLessonId)
       if (myExchangeLesson) {
         const exchangeDate = new Date(myExchangeLesson.date)
-        if (exchangeDate <= today) { alert('당일 또는 지난 수업은 교환 요청할 수 없습니다.'); setSending(false); return }
+        if (exchangeDate <= today) {
+          alert('당일 또는 지난 수업은 교환 요청할 수 없습니다.')
+          setSending(false); return
+        }
+        // 상대 강사가 내 수업 날짜/교시에 부재인지
+        if (isAbsent(targetInstructorId, selectedLesson.date, selectedLesson.period)) {
+          alert('상대 강사가 해당 날짜/교시에 휴가·출장 중이라 교환 요청이 불가합니다.')
+          setSending(false); return
+        }
+        // 내가 내줄 수업 날짜/교시에 상대 강사가 부재인지
+        if (isAbsent(targetInstructorId, myExchangeLesson.date, myExchangeLesson.period)) {
+          alert('상대 강사가 교환할 수업 날짜/교시에 휴가·출장 중이라 교환 요청이 불가합니다.')
+          setSending(false); return
+        }
+        // 내가 부재인지
+        if (isAbsent(user.id, selectedLesson.date, selectedLesson.period)) {
+          alert('본인이 해당 날짜/교시에 휴가·출장 중이라 요청이 불가합니다.')
+          setSending(false); return
+        }
+        if (isAbsent(user.id, myExchangeLesson.date, myExchangeLesson.period)) {
+          alert('본인이 교환할 수업 날짜/교시에 휴가·출장 중이라 요청이 불가합니다.')
+          setSending(false); return
+        }
       }
     }
+    // ────────────────────────────────────────────────────────
 
     const expires = new Date(); expires.setHours(23, 59, 59, 999)
     const { error } = await supabase.from('requests').insert({
@@ -190,7 +244,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 상단 앱 헤더 */}
       <div className="sticky top-0 bg-white shadow-sm z-50 px-4 py-3 flex-shrink-0">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push('/schedule')} className="text-blue-500 text-sm">← 뒤로</button>
@@ -208,8 +261,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
       {loading ? <p className="text-center text-gray-400 mt-8">불러오는 중...</p> : (
         <div className="flex overflow-hidden" style={{height: 'calc(100vh - 88px)'}}>
-
-          {/* 왼쪽 고정 열 */}
           <div className="flex-shrink-0 flex flex-col border-r border-gray-300" style={{width: fixedColWidth}}>
             <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end"
               style={{height: ROW_DATE + ROW_PERIOD}}>
@@ -220,35 +271,26 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               {visibleRows.map((course, idx) => (
                 <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
                   <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center"
-                    style={{width: COL_CLASSROOM}}>
-                    {course.classroom}
-                  </div>
+                    style={{width: COL_CLASSROOM}}>{course.classroom}</div>
                   <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight"
-                    style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
-                    {course.course_name}
-                  </div>
+                    style={{width: COL_COURSE, wordBreak: 'keep-all'}}>{course.course_name}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* 오른쪽 스크롤 영역 */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
               <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
                 {dates.map(d => (
                   <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300"
-                    style={{width: COL_PERIOD * PERIODS.length}}>
-                    {formatDate(d)}
-                  </div>
+                    style={{width: COL_PERIOD * PERIODS.length}}>{formatDate(d)}</div>
                 ))}
               </div>
               <div className="flex" style={{height: ROW_PERIOD, width: contentWidth}}>
                 {dates.map(d => PERIODS.map(p => (
                   <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs text-gray-500 bg-gray-50 border-r border-gray-200"
-                    style={{width: COL_PERIOD}}>
-                    {PERIOD_LABELS[p]}
-                  </div>
+                    style={{width: COL_PERIOD}}>{PERIOD_LABELS[p]}</div>
                 )))}
               </div>
             </div>
@@ -283,7 +325,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
-      {/* 요청 모달 */}
       {showModal && selectedLesson && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
           <div className="bg-white rounded-t-2xl p-6 w-full max-w-md">
@@ -291,8 +332,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             <p className="text-sm text-gray-500 mb-4">
               {formatDate(selectedLesson.date)} {PERIOD_LABELS[selectedLesson.period]} · {selectedLesson.subject}
             </p>
-
-            {/* 요청 타입 선택 */}
             <div className="flex gap-2 mb-4">
               <button onClick={() => { setRequestType('substitute'); setMyExchangeLessonId('') }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'substitute' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
@@ -304,15 +343,11 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               </button>
             </div>
 
-            {/* 교환 시: 내가 내줄 수업 선택 */}
             {requestType === 'exchange' && (
               <div className="mb-4">
                 <p className="text-xs text-gray-500 mb-1">내가 내줄 수업 선택</p>
-                <select
-                  value={myExchangeLessonId}
-                  onChange={(e) => setMyExchangeLessonId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                >
+                <select value={myExchangeLessonId} onChange={(e) => setMyExchangeLessonId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">수업 선택</option>
                   {myLessons.map(l => (
                     <option key={l.id} value={l.id}>
@@ -323,12 +358,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
-            {/* 대상 강사 선택 */}
-            <select
-              value={targetInstructorId}
-              onChange={(e) => setTargetInstructorId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
-            >
+            <select value={targetInstructorId} onChange={(e) => setTargetInstructorId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4">
               <option value="">강사 선택</option>
               {instructors.filter(i => i.id !== user.id).map(i => (
                 <option key={i.id} value={i.id}>{i.name}</option>
