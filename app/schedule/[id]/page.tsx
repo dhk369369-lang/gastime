@@ -264,7 +264,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                             {lesson ? (
                               <div
                                 onClick={() => handleLessonClick(lesson)}
-                                className={`rounded p-1 text-center ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-blue-500 cursor-pointer' : ''}`}
+                                className={`rounded p-1 text-center ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''}`}
                               >
                                 <div className="font-medium leading-tight">{lesson.subject}</div>
                                 {lesson.instructor1?.name && (
