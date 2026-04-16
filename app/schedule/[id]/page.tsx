@@ -172,9 +172,13 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   if (!user) return null
 
+  // 상단 헤더 높이 (px) - sticky top offset
+  const HEADER_HEIGHT = 90
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="sticky top-0 bg-white shadow-sm z-30 px-4 py-3">
+      {/* 상단 헤더 - z-40 */}
+      <div className="sticky top-0 bg-white shadow-sm z-40 px-4 py-3">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push('/schedule')} className="text-blue-500 text-sm">← 뒤로</button>
           <h1 className="text-lg font-bold text-blue-600">⏱ {weekLabel}</h1>
@@ -195,21 +199,38 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         <div className="overflow-x-auto p-2">
           <table className="border-collapse text-xs" style={{ minWidth: 'max-content' }}>
             <thead>
+              {/* 날짜 행: 상단 헤더 바로 아래 고정 */}
               <tr>
-                {/* 강의실: 너비 30px 고정 */}
-                <th className="border border-gray-300 bg-gray-100 p-1 text-center sticky left-0 top-0 z-30" style={{width: '30px', minWidth: '30px'}} rowSpan={2}>강의실</th>
-                {/* 과정: 너비 90px 고정 */}
-                <th className="border border-gray-300 bg-gray-100 p-1 text-center sticky left-8 top-0 z-30" style={{width: '90px', minWidth: '90px', maxWidth: '90px'}} rowSpan={2}>과정</th>
+                <th
+                  className="border border-gray-300 bg-gray-100 p-1 text-center sticky left-0 z-30"
+                  style={{ width: '30px', minWidth: '30px', top: `${HEADER_HEIGHT}px` }}
+                  rowSpan={2}
+                >강의실</th>
+                <th
+                  className="border border-gray-300 bg-gray-100 p-1 text-center sticky left-8 z-30"
+                  style={{ width: '108px', minWidth: '108px', maxWidth: '108px', top: `${HEADER_HEIGHT}px` }}
+                  rowSpan={2}
+                >과정</th>
                 {dates.map(d => (
-                  <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold sticky top-0 z-20" colSpan={PERIODS.length}>
+                  <th
+                    key={d}
+                    className="border border-gray-300 bg-gray-200 p-2 text-center font-bold sticky z-20"
+                    style={{ top: `${HEADER_HEIGHT}px` }}
+                    colSpan={PERIODS.length}
+                  >
                     {formatDate(d)}
                   </th>
                 ))}
               </tr>
+              {/* 교시 행: 날짜 행 높이(약 33px) 만큼 더 아래 고정 */}
               <tr>
                 {dates.map(d =>
                   PERIODS.map(p => (
-                    <th key={`${d}-${p}`} className="border border-gray-200 bg-gray-50 p-1 text-center text-gray-500 whitespace-nowrap font-normal sticky top-0 z-20">
+                    <th
+                      key={`${d}-${p}`}
+                      className="border border-gray-200 bg-gray-50 p-1 text-center text-gray-500 whitespace-nowrap font-normal sticky z-20"
+                      style={{ top: `${HEADER_HEIGHT + 33}px` }}
+                    >
                       {PERIOD_LABELS[p]}
                     </th>
                   ))
@@ -231,7 +252,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                     <td className="border border-gray-200 bg-gray-50 p-1 text-center font-bold sticky left-0 z-10" style={{width: '30px', minWidth: '30px'}}>
                       {course.classroom}
                     </td>
-                    <td className="border border-gray-200 bg-gray-50 p-1 text-center sticky left-8 z-10" style={{width: '90px', minWidth: '90px', maxWidth: '90px', wordBreak: 'keep-all'}}>
+                    <td className="border border-gray-200 bg-gray-50 p-1 text-center sticky left-8 z-10" style={{width: '108px', minWidth: '108px', maxWidth: '108px', wordBreak: 'keep-all'}}>
                       {course.course_name}
                     </td>
                     {dates.map(d =>
