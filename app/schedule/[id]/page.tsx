@@ -174,7 +174,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="sticky top-0 bg-white shadow-sm z-10 px-4 py-3">
+      {/* 상단 헤더 */}
+      <div className="sticky top-0 bg-white shadow-sm z-30 px-4 py-3">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push('/schedule')} className="text-blue-500 text-sm">← 뒤로</button>
           <h1 className="text-lg font-bold text-blue-600">⏱ {weekLabel}</h1>
@@ -195,19 +196,21 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         <div className="overflow-x-auto p-2">
           <table className="border-collapse text-xs" style={{ minWidth: 'max-content' }}>
             <thead>
+              {/* 날짜 행 - sticky top (상단 헤더 높이만큼 offset) */}
               <tr>
-                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-0 z-20" rowSpan={2}>강의실</th>
-                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-10 z-20" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
+                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-0 top-0 z-30" rowSpan={2}>강의실</th>
+                <th className="border border-gray-300 bg-gray-100 p-2 text-center sticky left-10 top-0 z-30" style={{maxWidth: '120px'}} rowSpan={2}>과정</th>
                 {dates.map(d => (
-                  <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold" colSpan={PERIODS.length}>
+                  <th key={d} className="border border-gray-300 bg-gray-200 p-2 text-center font-bold sticky top-0 z-20" colSpan={PERIODS.length}>
                     {formatDate(d)}
                   </th>
                 ))}
               </tr>
+              {/* 교시 행 - sticky */}
               <tr>
                 {dates.map(d =>
                   PERIODS.map(p => (
-                    <th key={`${d}-${p}`} className="border border-gray-200 bg-gray-50 p-1 text-center text-gray-500 whitespace-nowrap font-normal">
+                    <th key={`${d}-${p}`} className="border border-gray-200 bg-gray-50 p-1 text-center text-gray-500 whitespace-nowrap font-normal sticky top-0 z-20">
                       {PERIOD_LABELS[p]}
                     </th>
                   ))
