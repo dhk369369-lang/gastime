@@ -240,7 +240,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                     style={{width: COL_CLASSROOM}}>
                     {course.classroom}
                   </div>
-                  <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight"
+                  <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight text-gray-800"
                     style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
                     {course.course_name}
                   </div>
