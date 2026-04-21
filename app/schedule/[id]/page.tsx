@@ -236,7 +236,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             <div ref={leftHeaderRef} className="flex-1 overflow-hidden">
               {visibleRows.map((course, idx) => (
                 <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                  <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center"
+                  <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center text-gray-800"
                     style={{width: COL_CLASSROOM}}>
                     {course.classroom}
                   </div>
