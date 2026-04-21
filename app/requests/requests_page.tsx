@@ -8,6 +8,7 @@ interface Request {
   id: string
   type: string
   status: string
+  admin_approved: boolean | null
   created_at: string
   requester: { name: string } | null
   target: { name: string } | null
@@ -35,7 +36,7 @@ export default function RequestsPage() {
     const { data: sent } = await supabase
       .from('requests')
       .select(`
-        id, type, status, created_at,
+        id, type, status, admin_approved, created_at,
         requester:requester_id(name),
         target:target_id(name),
         lesson:lesson_id(date, period, subject),
@@ -47,7 +48,7 @@ export default function RequestsPage() {
     const { data: received } = await supabase
       .from('requests')
       .select(`
-        id, type, status, created_at,
+        id, type, status, admin_approved, created_at,
         requester:requester_id(name),
         target:target_id(name),
         lesson:lesson_id(date, period, subject),
@@ -71,13 +72,17 @@ export default function RequestsPage() {
     else fetchRequests(user.id)
   }
 
+  // 강사 수락 → status: accepted, admin_approved: false (관리자 최종 승인 대기)
   const handleAccept = async (id: string) => {
     const { error } = await supabase
       .from('requests')
-      .update({ status: 'accepted' })
+      .update({ status: 'accepted', admin_approved: false })
       .eq('id', id)
     if (error) alert('수락 실패: ' + error.message)
-    else fetchRequests(user.id)
+    else {
+      alert('수락했어요. 관리자 최종 승인을 기다려주세요.')
+      fetchRequests(user.id)
+    }
   }
 
   const handleReject = async (id: string) => {
@@ -94,26 +99,29 @@ export default function RequestsPage() {
     return `${d.getMonth() + 1}/${d.getDate()}`
   }
 
-  const statusLabel = (status: string) => {
+  // 상태 표시: accepted인데 admin_approved가 false면 "관리자 승인 대기"
+  const statusLabel = (r: Request) => {
+    if (r.status === 'accepted' && r.admin_approved === false) return '관리자 승인 대기'
+    if (r.status === 'accepted' && r.admin_approved === true) return '최종 승인됨'
     const map: Record<string, string> = {
       pending: '대기 중',
-      accepted: '수락됨',
       rejected: '거절됨',
       expired: '만료됨',
       cancelled: '취소됨',
     }
-    return map[status] || status
+    return map[r.status] || r.status
   }
 
-  const statusColor = (status: string) => {
+  const statusColor = (r: Request) => {
+    if (r.status === 'accepted' && r.admin_approved === false) return 'bg-orange-100 text-orange-700'
+    if (r.status === 'accepted' && r.admin_approved === true) return 'bg-green-100 text-green-700'
     const map: Record<string, string> = {
       pending: 'bg-yellow-100 text-yellow-700',
-      accepted: 'bg-green-100 text-green-700',
       rejected: 'bg-red-100 text-red-700',
       expired: 'bg-gray-100 text-gray-500',
       cancelled: 'bg-gray-100 text-gray-500',
     }
-    return map[status] || 'bg-gray-100 text-gray-500'
+    return map[r.status] || 'bg-gray-100 text-gray-500'
   }
 
   const currentRequests = tab === 'sent' ? sentRequests : receivedRequests
@@ -155,8 +163,8 @@ export default function RequestsPage() {
                   <span className="text-sm font-medium text-gray-800">
                     {r.type === 'exchange' ? '🔄 교환' : '🙋 대리강의'}
                   </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor(r.status)}`}>
-                    {statusLabel(r.status)}
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor(r)}`}>
+                    {statusLabel(r)}
                   </span>
                 </div>
                 <div className="text-sm text-gray-600 mb-1">
