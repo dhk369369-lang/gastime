@@ -20,19 +20,37 @@ const PERIOD_LABELS: Record<number, string> = {
   4: '4-1교시', 5: '4-2교시',
   6: '5교시', 7: '6교시', 8: '7교시', 9: '8교시'
 }
+// 교시별 시간 표시
+const PERIOD_TIMES: Record<number, string> = {
+  1: '09:20~10:10',
+  2: '10:20~11:10',
+  3: '11:20~12:10',
+  4: '12:20~13:10',
+  5: '13:10~14:00',
+  6: '14:10~15:00',
+  7: '15:10~16:00',
+  8: '16:10~17:00',
+  9: '17:10~18:00',
+}
 const TYPE_COLORS: Record<string, string> = {
   star: 'bg-blue-100 text-blue-800',
   theory: 'bg-green-100 text-green-800',
-  lunch: 'bg-gray-100 text-gray-600',
-  empty: 'bg-white text-gray-300',
+  lunch: 'bg-gray-100 text-gray-500',
+  empty: 'bg-white text-gray-200',
 }
 
 const COL_CLASSROOM = 36
 const COL_COURSE = 108
 const COL_PERIOD = 72
 const ROW_DATE = 28
-const ROW_PERIOD = 28
+const ROW_PERIOD_LABEL = 22  // 교시명 행 높이
+const ROW_PERIOD_TIME = 18   // 시간 행 높이
 const ROW_LESSON = 56
+
+// 요일 구분선 스타일
+const DAY_BORDER = '3px solid #374151'
+const NORMAL_BORDER = '1px solid #e5e7eb'
+const CELL_BORDER = '1px solid #f3f4f6'
 
 export default function ScheduleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -183,11 +201,13 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   const contentWidth = dates.length * PERIODS.length * COL_PERIOD
   const fixedColWidth = COL_CLASSROOM + COL_COURSE
+  const headerHeight = ROW_DATE + ROW_PERIOD_LABEL + ROW_PERIOD_TIME
 
   if (!user) return null
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* 상단 앱 헤더 */}
       <div className="sticky top-0 bg-white shadow-sm z-50 px-4 py-3 flex-shrink-0">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push('/schedule')} className="text-blue-500 text-sm">← 뒤로</button>
@@ -208,21 +228,19 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
           {/* 왼쪽 고정 열 */}
           <div className="flex-shrink-0 flex flex-col border-r border-gray-300" style={{width: fixedColWidth}}>
-            {/* 헤더 */}
-            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-200 flex items-end"
-              style={{height: ROW_DATE + ROW_PERIOD}}>
+            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end"
+              style={{height: headerHeight}}>
               <div className="text-center text-xs font-bold p-1 border-r border-gray-300 text-gray-800" style={{width: COL_CLASSROOM}}>강의실</div>
               <div className="text-center text-xs font-bold p-1 text-gray-800" style={{width: COL_COURSE}}>과정</div>
             </div>
-            {/* 데이터 */}
             <div ref={leftHeaderRef} className="flex-1 overflow-hidden">
               {visibleRows.map((course, idx) => (
                 <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                  <div className="flex items-center justify-center text-xs font-bold bg-gray-100 border-r border-gray-200 p-1 text-center text-gray-800"
+                  <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center"
                     style={{width: COL_CLASSROOM}}>
                     {course.classroom}
                   </div>
-                  <div className="flex items-center justify-center text-xs bg-gray-100 p-1 text-center leading-tight text-gray-800"
+                  <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight"
                     style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
                     {course.course_name}
                   </div>
@@ -233,42 +251,76 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
           {/* 오른쪽 스크롤 영역 */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* 날짜+교시 헤더 */}
+
+            {/* 날짜 + 교시 헤더 */}
             <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
+
+              {/* 날짜 행 */}
               <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
-                {dates.map(d => (
-                  <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 border-r border-gray-300 text-gray-800"
-                    style={{width: COL_PERIOD * PERIODS.length}}>
+                {dates.map((d, dIdx) => (
+                  <div key={d}
+                    className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 text-gray-800"
+                    style={{
+                      width: COL_PERIOD * PERIODS.length,
+                      borderLeft: dIdx === 0 ? 'none' : DAY_BORDER,
+                    }}>
                     {formatDate(d)}
                   </div>
                 ))}
               </div>
-              <div className="flex" style={{height: ROW_PERIOD, width: contentWidth}}>
-                {dates.map(d => PERIODS.map(p => (
-                  <div key={`${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs font-bold text-gray-700 bg-gray-100 border-r border-gray-200"
-                    style={{width: COL_PERIOD}}>
+
+              {/* 교시명 행 */}
+              <div className="flex" style={{height: ROW_PERIOD_LABEL, width: contentWidth}}>
+                {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => (
+                  <div key={`label-${d}-${p}`}
+                    className="flex-shrink-0 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-50"
+                    style={{
+                      width: COL_PERIOD,
+                      borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER,
+                      borderBottom: '1px solid #e5e7eb',
+                    }}>
                     {PERIOD_LABELS[p]}
+                  </div>
+                )))}
+              </div>
+
+              {/* 시간 행 */}
+              <div className="flex" style={{height: ROW_PERIOD_TIME, width: contentWidth}}>
+                {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => (
+                  <div key={`time-${d}-${p}`}
+                    className="flex-shrink-0 flex items-center justify-center bg-gray-50 text-gray-400"
+                    style={{
+                      width: COL_PERIOD,
+                      fontSize: '9px',
+                      borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER,
+                    }}>
+                    {PERIOD_TIMES[p]}
                   </div>
                 )))}
               </div>
             </div>
 
-            {/* 수업 내용 */}
+            {/* 셀 본문 */}
             <div className="flex-1 overflow-auto" onScroll={handleScroll}>
               <div style={{width: contentWidth}}>
                 {visibleRows.map((course, idx) => (
                   <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                    {dates.map(d => PERIODS.map(p => {
+                    {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => {
                       const lesson = getLesson(course.classroom, course.course_name, d, p)
                       const mine = lesson ? isMyLesson(lesson) : false
                       return (
-                        <div key={`${d}-${p}`} className="flex-shrink-0 p-0.5 border-r border-gray-100" style={{width: COL_PERIOD}}>
+                        <div key={`${d}-${p}`}
+                          className="flex-shrink-0 p-0.5"
+                          style={{
+                            width: COL_PERIOD,
+                            borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : CELL_BORDER,
+                          }}>
                           {lesson ? (
                             <div onClick={() => handleLessonClick(lesson)}
                               className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''}`}>
                               <div className="font-medium leading-tight">{lesson.subject}</div>
-                              {lesson.instructor1?.name && <div className="leading-tight">{lesson.instructor1.name}</div>}
-                              {lesson.instructor2?.name && <div className="leading-tight">{lesson.instructor2.name}</div>}
+                              {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
+                              {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
                             </div>
                           ) : (
                             <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>
@@ -284,6 +336,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
+      {/* 요청 모달 */}
       {showModal && selectedLesson && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
           <div className="bg-white rounded-t-2xl p-6 w-full max-w-md">
@@ -291,6 +344,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             <p className="text-sm text-gray-500 mb-4">
               {formatDate(selectedLesson.date)} {PERIOD_LABELS[selectedLesson.period]} · {selectedLesson.subject}
             </p>
+
             <div className="flex gap-2 mb-4">
               <button onClick={() => { setRequestType('substitute'); setMyExchangeLessonId('') }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'substitute' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
@@ -305,8 +359,11 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             {requestType === 'exchange' && (
               <div className="mb-4">
                 <p className="text-xs text-gray-500 mb-1">내가 내줄 수업 선택</p>
-                <select value={myExchangeLessonId} onChange={(e) => setMyExchangeLessonId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <select
+                  value={myExchangeLessonId}
+                  onChange={(e) => setMyExchangeLessonId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
                   <option value="">수업 선택</option>
                   {myLessons.map(l => (
                     <option key={l.id} value={l.id}>
@@ -317,8 +374,11 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
-            <select value={targetInstructorId} onChange={(e) => setTargetInstructorId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4">
+            <select
+              value={targetInstructorId}
+              onChange={(e) => setTargetInstructorId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
+            >
               <option value="">강사 선택</option>
               {instructors.filter(i => i.id !== user.id).map(i => (
                 <option key={i.id} value={i.id}>{i.name}</option>
