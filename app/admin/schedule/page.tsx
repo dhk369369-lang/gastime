@@ -141,7 +141,6 @@ export default function AdminSchedulePage() {
       applyMerges(ws, raw)
 
       // ── STEP 2: 1행에서 요일별 날짜 추출 ──
-      // startCol+1 부터 탐색하여 중복 방지
       const row0 = raw[0] ?? []
       const dayDates: string[] = DAY_START_COLS.map((startCol) => {
         for (let c = startCol + 1; c <= startCol + 8; c++) {
@@ -197,7 +196,32 @@ export default function AdminSchedulePage() {
         console.log('[부재 강사]', Object.keys(absentMap))
       }
 
-      // ── STEP 4: 기존 수업 삭제 ──
+      // ── STEP 4: 기존 데이터 삭제 (requests → lessons 순서로 FK 제약 해결) ──
+
+      // 해당 주차의 lesson id 목록 조회
+      const { data: existingLessons } = await supabase
+        .from('lessons')
+        .select('id')
+        .eq('schedule_id', selectedScheduleId)
+
+      const lessonIds = (existingLessons ?? []).map((l: any) => l.id)
+
+      // requests 먼저 삭제 (lesson_id, target_lesson_id 둘 다)
+      if (lessonIds.length > 0) {
+        const { error: deleteReqError1 } = await supabase
+          .from('requests')
+          .delete()
+          .in('lesson_id', lessonIds)
+        if (deleteReqError1) throw new Error('요청 데이터 삭제 실패(lesson_id): ' + deleteReqError1.message)
+
+        const { error: deleteReqError2 } = await supabase
+          .from('requests')
+          .delete()
+          .in('target_lesson_id', lessonIds)
+        if (deleteReqError2) throw new Error('요청 데이터 삭제 실패(target_lesson_id): ' + deleteReqError2.message)
+      }
+
+      // lessons 삭제
       const { error: deleteError } = await supabase
         .from('lessons')
         .delete()
