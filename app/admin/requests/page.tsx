@@ -9,11 +9,15 @@ interface Request {
   type: string
   status: string
   admin_approved: boolean | null
+  requester_id: string
+  target_id: string
+  lesson_id: string
+  target_lesson_id: string | null
   created_at: string
   requester: { name: string } | null
   target: { name: string } | null
-  lesson: { date: string; period: number; subject: string } | null
-  target_lesson: { date: string; period: number; subject: string } | null
+  lesson: { date: string; period: number; subject: string; instructor1_id: string | null; instructor2_id: string | null } | null
+  target_lesson: { date: string; period: number; subject: string; instructor1_id: string | null; instructor2_id: string | null } | null
 }
 
 export default function AdminRequestsPage() {
@@ -36,28 +40,82 @@ export default function AdminRequestsPage() {
     const { data } = await supabase
       .from('requests')
       .select(`
-        id, type, status, admin_approved, created_at,
+        id, type, status, admin_approved, requester_id, target_id, lesson_id, target_lesson_id, created_at,
         requester:requester_id(name),
         target:target_id(name),
-        lesson:lesson_id(date, period, subject),
-        target_lesson:target_lesson_id(date, period, subject)
+        lesson:lesson_id(date, period, subject, instructor1_id, instructor2_id),
+        target_lesson:target_lesson_id(date, period, subject, instructor1_id, instructor2_id)
       `)
       .order('created_at', { ascending: false })
     setRequests((data as any) || [])
     setLoading(false)
   }
 
-  // 관리자 최종 승인: admin_approved: true
-  const handleApprove = async (id: string) => {
-    const { error } = await supabase
-      .from('requests')
-      .update({ admin_approved: true })
-      .eq('id', id)
-    if (error) alert('승인 실패: ' + error.message)
-    else fetchRequests()
+  const handleApprove = async (r: Request) => {
+    try {
+      const lesson = r.lesson as any
+      const targetLesson = r.target_lesson as any
+
+      if (r.type === 'substitute') {
+        // 대리강의: requester 자리를 target으로 교체
+        if (!lesson) throw new Error('수업 정보 없음')
+
+        // requester가 instructor1인지 instructor2인지 판별
+        const updateData: any = {}
+        if (lesson.instructor1_id === r.requester_id) {
+          updateData.instructor1_id = r.target_id
+        } else if (lesson.instructor2_id === r.requester_id) {
+          updateData.instructor2_id = r.target_id
+        } else {
+          throw new Error('강사 매칭 실패')
+        }
+
+        const { error } = await supabase
+          .from('lessons')
+          .update(updateData)
+          .eq('id', r.lesson_id)
+        if (error) throw error
+
+      } else if (r.type === 'exchange') {
+        // 교환: lesson의 requester 자리 ↔ target_lesson의 target 자리 교체
+        if (!lesson || !targetLesson) throw new Error('수업 정보 없음')
+
+        // lesson에서 requester 위치
+        const lessonUpdate: any = {}
+        if (lesson.instructor1_id === r.requester_id) {
+          lessonUpdate.instructor1_id = r.target_id
+        } else if (lesson.instructor2_id === r.requester_id) {
+          lessonUpdate.instructor2_id = r.target_id
+        }
+
+        // target_lesson에서 target 위치
+        const targetLessonUpdate: any = {}
+        if (targetLesson.instructor1_id === r.target_id) {
+          targetLessonUpdate.instructor1_id = r.requester_id
+        } else if (targetLesson.instructor2_id === r.target_id) {
+          targetLessonUpdate.instructor2_id = r.requester_id
+        }
+
+        const { error: e1 } = await supabase.from('lessons').update(lessonUpdate).eq('id', r.lesson_id)
+        if (e1) throw e1
+        const { error: e2 } = await supabase.from('lessons').update(targetLessonUpdate).eq('id', r.target_lesson_id!)
+        if (e2) throw e2
+      }
+
+      // 최종 승인 처리
+      const { error } = await supabase
+        .from('requests')
+        .update({ admin_approved: true })
+        .eq('id', r.id)
+      if (error) throw error
+
+      alert('✅ 최종 승인 완료! 시간표가 변경됐어요.')
+      fetchRequests()
+    } catch (err: any) {
+      alert('승인 실패: ' + err.message)
+    }
   }
 
-  // 관리자 거절: status: rejected
   const handleReject = async (id: string) => {
     const { error } = await supabase
       .from('requests')
@@ -96,7 +154,6 @@ export default function AdminRequestsPage() {
     return map[r.status] || 'bg-gray-100 text-gray-500'
   }
 
-  // 탭 필터링
   const filteredRequests = tab === 'pending_admin'
     ? requests.filter(r => r.status === 'accepted' && r.admin_approved === false)
     : requests
@@ -113,7 +170,6 @@ export default function AdminRequestsPage() {
           <h1 className="text-xl font-bold text-gray-800">🔄 교환/대리강의 승인</h1>
         </div>
 
-        {/* 탭 */}
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => setTab('pending_admin')}
@@ -163,11 +219,10 @@ export default function AdminRequestsPage() {
                 )}
                 <div className="text-xs text-gray-400 mb-3">{formatDate(r.created_at)} 요청</div>
 
-                {/* 관리자 승인 대기 상태만 승인/거절 버튼 표시 */}
                 {r.status === 'accepted' && r.admin_approved === false && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleApprove(r.id)}
+                      onClick={() => handleApprove(r)}
                       className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700"
                     >
                       최종 승인
