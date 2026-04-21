@@ -81,10 +81,30 @@ export default function AdminSchedulePage() {
   }
 
   const handleDelete = async (id: string, label: string) => {
-    if (!confirm(`${label} 주차를 삭제할까요?`)) return
-    await supabase.from('schedules').delete().eq('id', id)
-    fetchSchedules()
+  if (!confirm(`${label} 주차를 삭제할까요?\n※ 해당 주차의 수업 및 교환/대리 요청도 모두 삭제됩니다.`)) return
+
+  // 해당 주차 lesson id 조회
+  const { data: existingLessons } = await supabase
+    .from('lessons')
+    .select('id')
+    .eq('schedule_id', id)
+
+  const lessonIds = (existingLessons ?? []).map((l: any) => l.id)
+
+  // requests 먼저 삭제
+  if (lessonIds.length > 0) {
+    await supabase.from('requests').delete().in('lesson_id', lessonIds)
+    await supabase.from('requests').delete().in('target_lesson_id', lessonIds)
   }
+
+  // lessons 삭제
+  await supabase.from('lessons').delete().eq('schedule_id', id)
+
+  // schedules 삭제
+  await supabase.from('schedules').delete().eq('id', id)
+
+  fetchSchedules()
+}
 
   const parseDate = (val: any): string => {
     if (!val) return ''
