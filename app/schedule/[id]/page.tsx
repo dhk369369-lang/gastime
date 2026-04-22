@@ -20,17 +20,10 @@ const PERIOD_LABELS: Record<number, string> = {
   4: '4-1교시', 5: '4-2교시',
   6: '5교시', 7: '6교시', 8: '7교시', 9: '8교시'
 }
-// 교시별 시간 표시
 const PERIOD_TIMES: Record<number, string> = {
-  1: '09:20~10:10',
-  2: '10:20~11:10',
-  3: '11:20~12:10',
-  4: '12:20~13:10',
-  5: '13:10~14:00',
-  6: '14:10~15:00',
-  7: '15:10~16:00',
-  8: '16:10~17:00',
-  9: '17:10~18:00',
+  1: '09:20~10:10', 2: '10:20~11:10', 3: '11:20~12:10',
+  4: '12:20~13:10', 5: '13:10~14:00', 6: '14:10~15:00',
+  7: '15:10~16:00', 8: '16:10~17:00', 9: '17:10~18:00',
 }
 const TYPE_COLORS: Record<string, string> = {
   star: 'bg-blue-100 text-blue-800',
@@ -43,11 +36,10 @@ const COL_CLASSROOM = 36
 const COL_COURSE = 108
 const COL_PERIOD = 72
 const ROW_DATE = 28
-const ROW_PERIOD_LABEL = 22  // 교시명 행 높이
-const ROW_PERIOD_TIME = 18   // 시간 행 높이
+const ROW_PERIOD_LABEL = 22
+const ROW_PERIOD_TIME = 18
 const ROW_LESSON = 56
 
-// 요일 구분선 스타일
 const DAY_BORDER = '3px solid #374151'
 const NORMAL_BORDER = '1px solid #e5e7eb'
 const CELL_BORDER = '1px solid #f3f4f6'
@@ -61,11 +53,22 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const [weekLabel, setWeekLabel] = useState('')
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'all' | 'mine'>('all')
+
+  // 강사 요청 모달
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [requestType, setRequestType] = useState<'exchange' | 'substitute'>('substitute')
   const [targetInstructorId, setTargetInstructorId] = useState('')
   const [myExchangeLessonId, setMyExchangeLessonId] = useState('')
+
+  // 관리자 편집 모달
+  const [showAdminModal, setShowAdminModal] = useState(false)
+  const [adminLesson, setAdminLesson] = useState<Lesson | null>(null)
+  const [adminInst1Id, setAdminInst1Id] = useState('')
+  const [adminInst2Id, setAdminInst2Id] = useState('')
+  const [adminPeriod, setAdminPeriod] = useState<number>(1)
+  const [adminSaving, setAdminSaving] = useState(false)
+
   const [instructors, setInstructors] = useState<Instructor[]>([])
   const [sending, setSending] = useState(false)
   const router = useRouter()
@@ -135,14 +138,51 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     l.id !== selectedLesson?.id
   )
 
+  // 셀 클릭: 관리자면 관리자 모달, 일반 강사면 요청 모달
   const handleLessonClick = (lesson: Lesson) => {
     if (lesson.subject_type === 'empty' || lesson.subject_type === 'lunch') return
+
+    if (user?.is_admin) {
+      // 관리자 편집 모달
+      setAdminLesson(lesson)
+      setAdminInst1Id(lesson.instructor1?.id ?? '')
+      setAdminInst2Id(lesson.instructor2?.id ?? '')
+      setAdminPeriod(lesson.period)
+      setShowAdminModal(true)
+      return
+    }
+
     if (!isMyLesson(lesson)) return
     setSelectedLesson(lesson)
     setRequestType('substitute')
     setTargetInstructorId('')
     setMyExchangeLessonId('')
     setShowModal(true)
+  }
+
+  // 관리자 저장
+  const handleAdminSave = async () => {
+    if (!adminLesson) return
+    setAdminSaving(true)
+    try {
+      const updateData: any = {
+        instructor1_id: adminInst1Id || null,
+        instructor2_id: adminInst2Id || null,
+        period: adminPeriod,
+      }
+      const { error } = await supabase
+        .from('lessons')
+        .update(updateData)
+        .eq('id', adminLesson.id)
+      if (error) throw error
+      alert('✅ 수정됐어요!')
+      setShowAdminModal(false)
+      setAdminLesson(null)
+      fetchData()
+    } catch (err: any) {
+      alert('저장 실패: ' + err.message)
+    }
+    setAdminSaving(false)
   }
 
   const handleSendRequest = async () => {
@@ -220,6 +260,9 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         <div className="flex gap-2 mt-2">
           <button onClick={() => setViewMode('all')} className={`px-3 py-1 rounded-lg text-xs font-medium ${viewMode === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>전체</button>
           <button onClick={() => setViewMode('mine')} className={`px-3 py-1 rounded-lg text-xs font-medium ${viewMode === 'mine' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>내 수업</button>
+          {user?.is_admin && (
+            <span className="px-3 py-1 rounded-lg text-xs font-medium bg-orange-100 text-orange-700">✏️ 관리자 편집 모드</span>
+          )}
         </div>
       </div>
 
@@ -251,56 +294,36 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
           {/* 오른쪽 스크롤 영역 */}
           <div className="flex-1 flex flex-col overflow-hidden">
-
-            {/* 날짜 + 교시 헤더 */}
             <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
-
-              {/* 날짜 행 */}
               <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
                 {dates.map((d, dIdx) => (
                   <div key={d}
                     className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 text-gray-800"
-                    style={{
-                      width: COL_PERIOD * PERIODS.length,
-                      borderLeft: dIdx === 0 ? 'none' : DAY_BORDER,
-                    }}>
+                    style={{ width: COL_PERIOD * PERIODS.length, borderLeft: dIdx === 0 ? 'none' : DAY_BORDER }}>
                     {formatDate(d)}
                   </div>
                 ))}
               </div>
-
-              {/* 교시명 행 */}
               <div className="flex" style={{height: ROW_PERIOD_LABEL, width: contentWidth}}>
                 {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => (
                   <div key={`label-${d}-${p}`}
                     className="flex-shrink-0 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-50"
-                    style={{
-                      width: COL_PERIOD,
-                      borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER,
-                      borderBottom: '1px solid #e5e7eb',
-                    }}>
+                    style={{ width: COL_PERIOD, borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER, borderBottom: '1px solid #e5e7eb' }}>
                     {PERIOD_LABELS[p]}
                   </div>
                 )))}
               </div>
-
-              {/* 시간 행 */}
               <div className="flex" style={{height: ROW_PERIOD_TIME, width: contentWidth}}>
                 {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => (
                   <div key={`time-${d}-${p}`}
                     className="flex-shrink-0 flex items-center justify-center bg-gray-50 text-gray-400"
-                    style={{
-                      width: COL_PERIOD,
-                      fontSize: '9px',
-                      borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER,
-                    }}>
+                    style={{ width: COL_PERIOD, fontSize: '9px', borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER }}>
                     {PERIOD_TIMES[p]}
                   </div>
                 )))}
               </div>
             </div>
 
-            {/* 셀 본문 */}
             <div className="flex-1 overflow-auto" onScroll={handleScroll}>
               <div style={{width: contentWidth}}>
                 {visibleRows.map((course, idx) => (
@@ -308,16 +331,14 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                     {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => {
                       const lesson = getLesson(course.classroom, course.course_name, d, p)
                       const mine = lesson ? isMyLesson(lesson) : false
+                      const isAdmin = user?.is_admin
                       return (
                         <div key={`${d}-${p}`}
                           className="flex-shrink-0 p-0.5"
-                          style={{
-                            width: COL_PERIOD,
-                            borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : CELL_BORDER,
-                          }}>
+                          style={{ width: COL_PERIOD, borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : CELL_BORDER }}>
                           {lesson ? (
                             <div onClick={() => handleLessonClick(lesson)}
-                              className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''}`}>
+                              className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''} ${isAdmin ? 'cursor-pointer hover:opacity-80' : ''}`}>
                               <div className="font-medium leading-tight">{lesson.subject}</div>
                               {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
                               {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
@@ -336,7 +357,79 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
-      {/* 요청 모달 */}
+      {/* 관리자 편집 모달 */}
+      {showAdminModal && adminLesson && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
+          <div className="bg-white rounded-t-2xl p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold text-gray-800 mb-1">✏️ 관리자 직권 수정</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {formatDate(adminLesson.date)} · {adminLesson.subject} · {adminLesson.classroom}
+            </p>
+
+            {/* 교시 변경 */}
+            <div className="mb-4">
+              <p className="text-xs text-gray-500 mb-1">교시 변경</p>
+              <select
+                value={adminPeriod}
+                onChange={(e) => setAdminPeriod(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                {PERIODS.map(p => (
+                  <option key={p} value={p}>{PERIOD_LABELS[p]} ({PERIOD_TIMES[p]})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 강사1 변경 */}
+            <div className="mb-4">
+              <p className="text-xs text-gray-500 mb-1">강사1</p>
+              <select
+                value={adminInst1Id}
+                onChange={(e) => setAdminInst1Id(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">없음</option>
+                {instructors.map(i => (
+                  <option key={i.id} value={i.id}>{i.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 강사2 변경 */}
+            <div className="mb-4">
+              <p className="text-xs text-gray-500 mb-1">강사2</p>
+              <select
+                value={adminInst2Id}
+                onChange={(e) => setAdminInst2Id(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">없음</option>
+                {instructors.map(i => (
+                  <option key={i.id} value={i.id}>{i.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowAdminModal(false); setAdminLesson(null) }}
+                className="flex-1 bg-gray-100 text-gray-600 rounded-lg py-3 text-sm"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleAdminSave}
+                disabled={adminSaving}
+                className="flex-1 bg-orange-500 text-white rounded-lg py-3 text-sm disabled:opacity-50"
+              >
+                {adminSaving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 강사 요청 모달 */}
       {showModal && selectedLesson && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
           <div className="bg-white rounded-t-2xl p-6 w-full max-w-md">
