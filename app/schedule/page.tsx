@@ -179,7 +179,7 @@ export default function SchedulePage() {
           </div>
         </div>
 
-        <p className="text-gray-700 mb-4">👋 {user.name}님, 주차를 선택해주세요</p>
+        <p className="text-gray-700 mb-4">👋 {user.name}님, 오늘의 강의를 확인해주세요</p>
 
         {/* 오늘의 강의 */}
         {todayLessons.length > 0 ? (
