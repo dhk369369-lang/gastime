@@ -18,18 +18,10 @@ interface Instructor {
   name: string
 }
 
-// 주간탭: 0-based 열 인덱스 (C=2, L=11, U=20, AD=29, AM=38)
 const DAY_START_COLS = [2, 11, 20, 29, 38]
-
-// 검증탭: 0-based 열 인덱스 (B=1부터 9개씩)
 const ABS_DAY_START_COLS = [1, 10, 19, 28, 37]
-
-// offset → 교시 번호 (9개 열)
 const PERIOD_MAP: Record<number, number> = {
-  0: 1, 1: 2, 2: 3,
-  3: 4, // 4-1교시
-  4: 5, // 4-2교시
-  5: 6, 6: 7, 7: 8, 8: 9,
+  0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9,
 }
 
 export default function AdminSchedulePage() {
@@ -81,30 +73,17 @@ export default function AdminSchedulePage() {
   }
 
   const handleDelete = async (id: string, label: string) => {
-  if (!confirm(`${label} 주차를 삭제할까요?\n※ 해당 주차의 수업 및 교환/대리 요청도 모두 삭제됩니다.`)) return
-
-  // 해당 주차 lesson id 조회
-  const { data: existingLessons } = await supabase
-    .from('lessons')
-    .select('id')
-    .eq('schedule_id', id)
-
-  const lessonIds = (existingLessons ?? []).map((l: any) => l.id)
-
-  // requests 먼저 삭제
-  if (lessonIds.length > 0) {
-    await supabase.from('requests').delete().in('lesson_id', lessonIds)
-    await supabase.from('requests').delete().in('target_lesson_id', lessonIds)
+    if (!confirm(`${label} 주차를 삭제할까요?\n※ 해당 주차의 수업 및 교환/대리 요청도 모두 삭제됩니다.`)) return
+    const { data: existingLessons } = await supabase.from('lessons').select('id').eq('schedule_id', id)
+    const lessonIds = (existingLessons ?? []).map((l: any) => l.id)
+    if (lessonIds.length > 0) {
+      await supabase.from('requests').delete().in('lesson_id', lessonIds)
+      await supabase.from('requests').delete().in('target_lesson_id', lessonIds)
+    }
+    await supabase.from('lessons').delete().eq('schedule_id', id)
+    await supabase.from('schedules').delete().eq('id', id)
+    fetchSchedules()
   }
-
-  // lessons 삭제
-  await supabase.from('lessons').delete().eq('schedule_id', id)
-
-  // schedules 삭제
-  await supabase.from('schedules').delete().eq('id', id)
-
-  fetchSchedules()
-}
 
   const parseDate = (val: any): string => {
     if (!val) return ''
@@ -127,8 +106,7 @@ export default function AdminSchedulePage() {
     return 'theory'
   }
 
-  const normalizeName = (raw: string): string =>
-    raw.replace(/·/g, '').trim()
+  const normalizeName = (raw: string): string => raw.replace(/·/g, '').trim()
 
   const applyMerges = (ws: XLSX.WorkSheet, raw: any[][]): void => {
     const merges: any[] = ws['!merges'] ?? []
@@ -154,13 +132,11 @@ export default function AdminSchedulePage() {
       const buffer = await file.arrayBuffer()
       const wb = XLSX.read(buffer, { type: 'array' })
 
-      // ── STEP 1: 주간 탭 읽기 + 병합셀 처리 ──
       const sheetName = wb.SheetNames.find(n => n === '주간') ?? wb.SheetNames[0]
       const ws = wb.Sheets[sheetName]
       const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][]
       applyMerges(ws, raw)
 
-      // ── STEP 2: 1행에서 요일별 날짜 추출 ──
       const row0 = raw[0] ?? []
       const dayDates: string[] = DAY_START_COLS.map((startCol) => {
         for (let c = startCol + 1; c <= startCol + 8; c++) {
@@ -171,14 +147,11 @@ export default function AdminSchedulePage() {
       })
       console.log('[날짜]', dayDates)
 
-      // ── STEP 3: 검증 탭 파싱 → 부재 맵 ──
       const absentMap: Record<string, Record<string, Set<number>>> = {}
-
       const absSheet = wb.Sheets['검증']
       if (absSheet) {
         const absRaw = XLSX.utils.sheet_to_json(absSheet, { header: 1, defval: '' }) as any[][]
         applyMerges(absSheet, absRaw)
-
         const absRow0 = absRaw[0] ?? []
         const absDayDates: string[] = ABS_DAY_START_COLS.map((startCol) => {
           for (let c = startCol + 1; c <= startCol + 8; c++) {
@@ -187,24 +160,19 @@ export default function AdminSchedulePage() {
           }
           return ''
         })
-        console.log('[검증탭 날짜]', absDayDates)
-
         for (let r = 2; r < absRaw.length; r++) {
           const row = absRaw[r]
           const rawName = String(row[0] ?? '').trim()
           if (!rawName) continue
           const instName = normalizeName(rawName)
-
           for (let dayIdx = 0; dayIdx < ABS_DAY_START_COLS.length; dayIdx++) {
             const startCol = ABS_DAY_START_COLS[dayIdx]
             const date = absDayDates[dayIdx]
             if (!date) continue
-
             for (let offset = 0; offset < 9; offset++) {
               const col = startCol + offset
               const period = PERIOD_MAP[offset]
               const val = Number(row[col] ?? 0)
-
               if (val >= 1) {
                 if (!absentMap[instName]) absentMap[instName] = {}
                 if (!absentMap[instName][date]) absentMap[instName][date] = new Set()
@@ -213,42 +181,20 @@ export default function AdminSchedulePage() {
             }
           }
         }
-        console.log('[부재 강사]', Object.keys(absentMap))
       }
 
-      // ── STEP 4: 기존 데이터 삭제 (requests → lessons 순서로 FK 제약 해결) ──
-
-      // 해당 주차의 lesson id 목록 조회
-      const { data: existingLessons } = await supabase
-        .from('lessons')
-        .select('id')
-        .eq('schedule_id', selectedScheduleId)
-
+      // 기존 데이터 삭제
+      const { data: existingLessons } = await supabase.from('lessons').select('id').eq('schedule_id', selectedScheduleId)
       const lessonIds = (existingLessons ?? []).map((l: any) => l.id)
-
-      // requests 먼저 삭제 (lesson_id, target_lesson_id 둘 다)
       if (lessonIds.length > 0) {
-        const { error: deleteReqError1 } = await supabase
-          .from('requests')
-          .delete()
-          .in('lesson_id', lessonIds)
-        if (deleteReqError1) throw new Error('요청 데이터 삭제 실패(lesson_id): ' + deleteReqError1.message)
-
-        const { error: deleteReqError2 } = await supabase
-          .from('requests')
-          .delete()
-          .in('target_lesson_id', lessonIds)
-        if (deleteReqError2) throw new Error('요청 데이터 삭제 실패(target_lesson_id): ' + deleteReqError2.message)
+        const { error: e1 } = await supabase.from('requests').delete().in('lesson_id', lessonIds)
+        if (e1) throw new Error('요청 데이터 삭제 실패(lesson_id): ' + e1.message)
+        const { error: e2 } = await supabase.from('requests').delete().in('target_lesson_id', lessonIds)
+        if (e2) throw new Error('요청 데이터 삭제 실패(target_lesson_id): ' + e2.message)
       }
-
-      // lessons 삭제
-      const { error: deleteError } = await supabase
-        .from('lessons')
-        .delete()
-        .eq('schedule_id', selectedScheduleId)
+      const { error: deleteError } = await supabase.from('lessons').delete().eq('schedule_id', selectedScheduleId)
       if (deleteError) throw new Error('기존 데이터 삭제 실패: ' + deleteError.message)
 
-      // ── STEP 5: 수업 데이터 파싱 ──
       const lessonsToInsert: any[] = []
 
       for (let r = 3; r < raw.length; r += 2) {
@@ -257,8 +203,10 @@ export default function AdminSchedulePage() {
 
         const classroom = String(subjectRow[0] ?? '').trim()
         const courseName = String(subjectRow[1] ?? '').trim()
-
         if (!classroom && !courseName) continue
+
+        // 재시험 과정 여부
+        const isReexam = courseName.includes('재시험')
 
         for (let dayIdx = 0; dayIdx < DAY_START_COLS.length; dayIdx++) {
           const startCol = DAY_START_COLS[dayIdx]
@@ -271,21 +219,25 @@ export default function AdminSchedulePage() {
 
             const subject = String(subjectRow[col] ?? '').trim()
             const instructorCell = String(instructorRow[col] ?? '').trim()
-
             if (!subject && !instructorCell) continue
 
             const instNames = instructorCell.split('\n').map((s: string) => s.trim()).filter(Boolean)
             const inst1Name = instNames[0] ?? ''
-            const inst2Name = instNames[1] ?? ''
+            const inst2Name = isReexam ? '' : (instNames[1] ?? '')
 
             const inst1 = instructors.find(i => i.name === inst1Name)
-            const inst2 = instructors.find(i => i.name === inst2Name)
+            const inst2 = inst2Name ? instructors.find(i => i.name === inst2Name) : undefined
 
             if (inst1Name && !inst1) console.warn(`[미매칭] "${inst1Name}" (${date} ${period}교시)`)
             if (inst2Name && !inst2) console.warn(`[미매칭] "${inst2Name}" (${date} ${period}교시)`)
 
             const isAbsent1 = inst1 ? (absentMap[inst1Name]?.[date]?.has(period) ?? false) : false
             const isAbsent2 = inst2 ? (absentMap[inst2Name]?.[date]?.has(period) ?? false) : false
+
+            // 재시험 과정: 2번째 이름부터 extra_instructors에 쉼표로 저장
+            const extraInstructors = isReexam && instNames.length > 1
+              ? instNames.slice(1).join(',')
+              : null
 
             lessonsToInsert.push({
               schedule_id: selectedScheduleId,
@@ -300,6 +252,7 @@ export default function AdminSchedulePage() {
               row_order: r,
               is_absent1: isAbsent1,
               is_absent2: isAbsent2,
+              extra_instructors: extraInstructors,
             })
           }
         }
@@ -307,20 +260,12 @@ export default function AdminSchedulePage() {
 
       console.log(`[파싱 완료] ${lessonsToInsert.length}개 수업`)
 
-      // ── STEP 6: 100개씩 배치 insert ──
       for (let i = 0; i < lessonsToInsert.length; i += 100) {
-        const { error: insertError } = await supabase
-          .from('lessons')
-          .insert(lessonsToInsert.slice(i, i + 100))
+        const { error: insertError } = await supabase.from('lessons').insert(lessonsToInsert.slice(i, i + 100))
         if (insertError) throw new Error(`insert 실패 (${i}번째 배치): ` + insertError.message)
       }
 
-      // ── STEP 7: 주차 공개 상태 갱신 ──
-      await supabase
-        .from('schedules')
-        .update({ is_uploaded: true })
-        .eq('id', selectedScheduleId)
-
+      await supabase.from('schedules').update({ is_uploaded: true }).eq('id', selectedScheduleId)
       fetchSchedules()
       alert(`✅ 업로드 완료!\n${lessonsToInsert.length}개 수업이 등록됐어요.`)
 
@@ -363,26 +308,13 @@ export default function AdminSchedulePage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
           <h2 className="font-medium text-gray-700 mb-3">주차 추가</h2>
           <div className="space-y-2">
-            <input
-              type="text" value={weekLabel}
-              onChange={(e) => setWeekLabel(e.target.value)}
-              placeholder="주차명 (예: 4월 1주차)"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              type="date" value={weekStart}
-              onChange={(e) => setWeekStart(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              type="number" value={weekNumber}
-              onChange={(e) => setWeekNumber(e.target.value)}
-              placeholder="주차 번호 (예: 1)"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
-            <button onClick={handleAdd} className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">
-              추가
-            </button>
+            <input type="text" value={weekLabel} onChange={(e) => setWeekLabel(e.target.value)}
+              placeholder="주차명 (예: 4월 1주차)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <input type="date" value={weekStart} onChange={(e) => setWeekStart(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <input type="number" value={weekNumber} onChange={(e) => setWeekNumber(e.target.value)}
+              placeholder="주차 번호 (예: 1)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <button onClick={handleAdd} className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">추가</button>
           </div>
         </div>
 
@@ -400,18 +332,11 @@ export default function AdminSchedulePage() {
                       <div className="text-xs text-gray-400">{s.week_start}</div>
                     </div>
                     <div className="flex gap-2 items-center">
-                      <button
-                        onClick={() => handleToggleUpload(s.id, s.is_uploaded)}
-                        className={`text-xs px-3 py-1 rounded-full ${s.is_uploaded ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
-                      >
+                      <button onClick={() => handleToggleUpload(s.id, s.is_uploaded)}
+                        className={`text-xs px-3 py-1 rounded-full ${s.is_uploaded ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {s.is_uploaded ? '공개' : '잠금'}
                       </button>
-                      <button
-                        onClick={() => handleDelete(s.id, s.week_label)}
-                        className="text-red-400 hover:text-red-600 text-sm"
-                      >
-                        삭제
-                      </button>
+                      <button onClick={() => handleDelete(s.id, s.week_label)} className="text-red-400 hover:text-red-600 text-sm">삭제</button>
                     </div>
                   </div>
                 </li>

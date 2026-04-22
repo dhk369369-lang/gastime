@@ -9,7 +9,7 @@ interface Instructor { id: string; name: string }
 interface Lesson {
   id: string; date: string; period: number; subject: string
   subject_type: string; classroom: string; course_name: string
-  row_order: number
+  row_order: number; extra_instructors: string | null
   instructor1: Instructor | null; instructor2: Instructor | null
 }
 interface CourseRow { classroom: string; course_name: string; row_order: number }
@@ -39,10 +39,26 @@ const ROW_DATE = 28
 const ROW_PERIOD_LABEL = 22
 const ROW_PERIOD_TIME = 18
 const ROW_LESSON = 56
+const ROW_LESSON_PER_INSTRUCTOR = 14 // 강사 1명당 추가 높이
 
 const DAY_BORDER = '3px solid #374151'
 const NORMAL_BORDER = '1px solid #e5e7eb'
 const CELL_BORDER = '1px solid #f3f4f6'
+
+// 재시험 과정 행 높이 계산 (강사 수에 따라 동적)
+const getRowHeight = (course: CourseRow, lessons: Lesson[], dates: string[]) => {
+  if (!course.course_name.includes('재시험')) return ROW_LESSON
+  // 해당 과정의 최대 강사 수 계산
+  let maxInstructors = 1
+  lessons.forEach(l => {
+    if (l.classroom === course.classroom && l.course_name === course.course_name) {
+      let count = l.instructor1 ? 1 : 0
+      if (l.extra_instructors) count += l.extra_instructors.split(',').filter(Boolean).length
+      if (count > maxInstructors) maxInstructors = count
+    }
+  })
+  return Math.max(ROW_LESSON, maxInstructors * ROW_LESSON_PER_INSTRUCTOR + 16)
+}
 
 export default function ScheduleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -54,14 +70,12 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'all' | 'mine'>('all')
 
-  // 강사 요청 모달
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [requestType, setRequestType] = useState<'exchange' | 'substitute'>('substitute')
   const [targetInstructorId, setTargetInstructorId] = useState('')
   const [myExchangeLessonId, setMyExchangeLessonId] = useState('')
 
-  // 관리자 편집 모달
   const [showAdminModal, setShowAdminModal] = useState(false)
   const [adminLesson, setAdminLesson] = useState<Lesson | null>(null)
   const [adminInst1Id, setAdminInst1Id] = useState('')
@@ -96,7 +110,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: lessonData } = await supabase
       .from('lessons')
-      .select(`id, date, period, subject, subject_type, classroom, course_name, row_order,
+      .select(`id, date, period, subject, subject_type, classroom, course_name, row_order, extra_instructors,
         instructor1:instructor1_id(id, name), instructor2:instructor2_id(id, name)`)
       .eq('schedule_id', id)
       .order('row_order').order('date').order('period')
@@ -132,18 +146,12 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     !!(user && (lesson.instructor1?.id === user.id || lesson.instructor2?.id === user.id))
 
   const myLessons = lessons.filter(l =>
-    isMyLesson(l) &&
-    l.subject_type !== 'lunch' &&
-    l.subject_type !== 'empty' &&
-    l.id !== selectedLesson?.id
+    isMyLesson(l) && l.subject_type !== 'lunch' && l.subject_type !== 'empty' && l.id !== selectedLesson?.id
   )
 
-  // 셀 클릭: 관리자면 관리자 모달, 일반 강사면 요청 모달
   const handleLessonClick = (lesson: Lesson) => {
     if (lesson.subject_type === 'empty' || lesson.subject_type === 'lunch') return
-
     if (user?.is_admin) {
-      // 관리자 편집 모달
       setAdminLesson(lesson)
       setAdminInst1Id(lesson.instructor1?.id ?? '')
       setAdminInst2Id(lesson.instructor2?.id ?? '')
@@ -151,7 +159,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
       setShowAdminModal(true)
       return
     }
-
     if (!isMyLesson(lesson)) return
     setSelectedLesson(lesson)
     setRequestType('substitute')
@@ -160,20 +167,15 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     setShowModal(true)
   }
 
-  // 관리자 저장
   const handleAdminSave = async () => {
     if (!adminLesson) return
     setAdminSaving(true)
     try {
-      const updateData: any = {
+      const { error } = await supabase.from('lessons').update({
         instructor1_id: adminInst1Id || null,
         instructor2_id: adminInst2Id || null,
         period: adminPeriod,
-      }
-      const { error } = await supabase
-        .from('lessons')
-        .update(updateData)
-        .eq('id', adminLesson.id)
+      }).eq('id', adminLesson.id)
       if (error) throw error
       alert('✅ 수정됐어요!')
       setShowAdminModal(false)
@@ -205,10 +207,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
     const expires = new Date(); expires.setHours(23, 59, 59, 999)
     const { error } = await supabase.from('requests').insert({
-      type: requestType,
-      status: 'pending',
-      requester_id: user.id,
-      target_id: targetInstructorId,
+      type: requestType, status: 'pending',
+      requester_id: user.id, target_id: targetInstructorId,
       lesson_id: selectedLesson.id,
       target_lesson_id: requestType === 'exchange' ? myExchangeLessonId : null,
       expires_at: expires.toISOString(),
@@ -217,10 +217,8 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
     if (error) alert('요청 실패: ' + error.message)
     else {
       alert('요청이 전송됐어요!')
-      setShowModal(false)
-      setSelectedLesson(null)
-      setTargetInstructorId('')
-      setMyExchangeLessonId('')
+      setShowModal(false); setSelectedLesson(null)
+      setTargetInstructorId(''); setMyExchangeLessonId('')
     }
     setSending(false)
   }
@@ -247,7 +245,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 상단 앱 헤더 */}
       <div className="sticky top-0 bg-white shadow-sm z-50 px-4 py-3 flex-shrink-0">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push('/schedule')} className="text-blue-500 text-sm">← 뒤로</button>
@@ -271,24 +268,24 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
           {/* 왼쪽 고정 열 */}
           <div className="flex-shrink-0 flex flex-col border-r border-gray-300" style={{width: fixedColWidth}}>
-            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end"
-              style={{height: headerHeight}}>
+            <div className="flex-shrink-0 border-b border-gray-300 bg-gray-100 flex items-end" style={{height: headerHeight}}>
               <div className="text-center text-xs font-bold p-1 border-r border-gray-300 text-gray-800" style={{width: COL_CLASSROOM}}>강의실</div>
               <div className="text-center text-xs font-bold p-1 text-gray-800" style={{width: COL_COURSE}}>과정</div>
             </div>
             <div ref={leftHeaderRef} className="flex-1 overflow-hidden">
-              {visibleRows.map((course, idx) => (
-                <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                  <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center text-gray-800"
-                    style={{width: COL_CLASSROOM}}>
-                    {course.classroom}
+              {visibleRows.map((course, idx) => {
+                const rowHeight = getRowHeight(course, lessons, dates)
+                return (
+                  <div key={idx} className="flex border-b border-gray-200" style={{height: rowHeight}}>
+                    <div className="flex items-center justify-center text-xs font-bold bg-gray-50 border-r border-gray-200 p-1 text-center text-gray-800" style={{width: COL_CLASSROOM}}>
+                      {course.classroom}
+                    </div>
+                    <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight text-gray-800" style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
+                      {course.course_name}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-center text-xs bg-gray-50 p-1 text-center leading-tight text-gray-800"
-                    style={{width: COL_COURSE, wordBreak: 'keep-all'}}>
-                    {course.course_name}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
@@ -297,8 +294,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             <div ref={topHeaderRef} className="flex-shrink-0 overflow-hidden border-b border-gray-300">
               <div className="flex" style={{height: ROW_DATE, width: contentWidth}}>
                 {dates.map((d, dIdx) => (
-                  <div key={d}
-                    className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 text-gray-800"
+                  <div key={d} className="flex-shrink-0 flex items-center justify-center text-xs font-bold bg-gray-200 text-gray-800"
                     style={{ width: COL_PERIOD * PERIODS.length, borderLeft: dIdx === 0 ? 'none' : DAY_BORDER }}>
                     {formatDate(d)}
                   </div>
@@ -306,8 +302,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               </div>
               <div className="flex" style={{height: ROW_PERIOD_LABEL, width: contentWidth}}>
                 {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => (
-                  <div key={`label-${d}-${p}`}
-                    className="flex-shrink-0 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-50"
+                  <div key={`label-${d}-${p}`} className="flex-shrink-0 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-50"
                     style={{ width: COL_PERIOD, borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER, borderBottom: '1px solid #e5e7eb' }}>
                     {PERIOD_LABELS[p]}
                   </div>
@@ -315,8 +310,7 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
               </div>
               <div className="flex" style={{height: ROW_PERIOD_TIME, width: contentWidth}}>
                 {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => (
-                  <div key={`time-${d}-${p}`}
-                    className="flex-shrink-0 flex items-center justify-center bg-gray-50 text-gray-400"
+                  <div key={`time-${d}-${p}`} className="flex-shrink-0 flex items-center justify-center bg-gray-50 text-gray-400"
                     style={{ width: COL_PERIOD, fontSize: '9px', borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : NORMAL_BORDER }}>
                     {PERIOD_TIMES[p]}
                   </div>
@@ -326,31 +320,41 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
 
             <div className="flex-1 overflow-auto" onScroll={handleScroll}>
               <div style={{width: contentWidth}}>
-                {visibleRows.map((course, idx) => (
-                  <div key={idx} className="flex border-b border-gray-200" style={{height: ROW_LESSON}}>
-                    {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => {
-                      const lesson = getLesson(course.classroom, course.course_name, d, p)
-                      const mine = lesson ? isMyLesson(lesson) : false
-                      const isAdmin = user?.is_admin
-                      return (
-                        <div key={`${d}-${p}`}
-                          className="flex-shrink-0 p-0.5"
-                          style={{ width: COL_PERIOD, borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : CELL_BORDER }}>
-                          {lesson ? (
-                            <div onClick={() => handleLessonClick(lesson)}
-                              className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''} ${isAdmin ? 'cursor-pointer hover:opacity-80' : ''}`}>
-                              <div className="font-medium leading-tight">{lesson.subject}</div>
-                              {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
-                              {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
-                            </div>
-                          ) : (
-                            <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>
-                          )}
-                        </div>
-                      )
-                    }))}
-                  </div>
-                ))}
+                {visibleRows.map((course, idx) => {
+                  const rowHeight = getRowHeight(course, lessons, dates)
+                  return (
+                    <div key={idx} className="flex border-b border-gray-200" style={{height: rowHeight}}>
+                      {dates.map((d, dIdx) => PERIODS.map((p, pIdx) => {
+                        const lesson = getLesson(course.classroom, course.course_name, d, p)
+                        const mine = lesson ? isMyLesson(lesson) : false
+                        const isAdmin = user?.is_admin
+                        // 재시험 extra_instructors 파싱
+                        const extraNames = lesson?.extra_instructors
+                          ? lesson.extra_instructors.split(',').filter(Boolean)
+                          : []
+                        return (
+                          <div key={`${d}-${p}`} className="flex-shrink-0 p-0.5"
+                            style={{ width: COL_PERIOD, borderLeft: (dIdx > 0 && pIdx === 0) ? DAY_BORDER : CELL_BORDER }}>
+                            {lesson ? (
+                              <div onClick={() => handleLessonClick(lesson)}
+                                className={`h-full rounded p-0.5 text-center text-xs ${TYPE_COLORS[lesson.subject_type]} ${mine ? 'ring-2 ring-red-500 cursor-pointer' : ''} ${isAdmin ? 'cursor-pointer hover:opacity-80' : ''}`}>
+                                <div className="font-medium leading-tight">{lesson.subject}</div>
+                                {lesson.instructor1?.name && <div className="text-gray-500 leading-tight">{lesson.instructor1.name}</div>}
+                                {lesson.instructor2?.name && <div className="text-gray-500 leading-tight">{lesson.instructor2.name}</div>}
+                                {/* 재시험 추가 강사 표시 */}
+                                {extraNames.map((name, i) => (
+                                  <div key={i} className="text-gray-500 leading-tight">{name}</div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="h-full flex items-center justify-center text-gray-200 text-xs">-</div>
+                            )}
+                          </div>
+                        )
+                      }))}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -362,66 +366,35 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
           <div className="bg-white rounded-t-2xl p-6 w-full max-w-md">
             <h2 className="text-lg font-bold text-gray-800 mb-1">✏️ 관리자 직권 수정</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              {formatDate(adminLesson.date)} · {adminLesson.subject} · {adminLesson.classroom}
-            </p>
-
-            {/* 교시 변경 */}
+            <p className="text-sm text-gray-500 mb-4">{formatDate(adminLesson.date)} · {adminLesson.subject} · {adminLesson.classroom}</p>
             <div className="mb-4">
               <p className="text-xs text-gray-500 mb-1">교시 변경</p>
-              <select
-                value={adminPeriod}
-                onChange={(e) => setAdminPeriod(Number(e.target.value))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                {PERIODS.map(p => (
-                  <option key={p} value={p}>{PERIOD_LABELS[p]} ({PERIOD_TIMES[p]})</option>
-                ))}
+              <select value={adminPeriod} onChange={(e) => setAdminPeriod(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                {PERIODS.map(p => <option key={p} value={p}>{PERIOD_LABELS[p]} ({PERIOD_TIMES[p]})</option>)}
               </select>
             </div>
-
-            {/* 강사1 변경 */}
             <div className="mb-4">
               <p className="text-xs text-gray-500 mb-1">강사1</p>
-              <select
-                value={adminInst1Id}
-                onChange={(e) => setAdminInst1Id(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
+              <select value={adminInst1Id} onChange={(e) => setAdminInst1Id(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 <option value="">없음</option>
-                {instructors.map(i => (
-                  <option key={i.id} value={i.id}>{i.name}</option>
-                ))}
+                {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
               </select>
             </div>
-
-            {/* 강사2 변경 */}
             <div className="mb-4">
               <p className="text-xs text-gray-500 mb-1">강사2</p>
-              <select
-                value={adminInst2Id}
-                onChange={(e) => setAdminInst2Id(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
+              <select value={adminInst2Id} onChange={(e) => setAdminInst2Id(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 <option value="">없음</option>
-                {instructors.map(i => (
-                  <option key={i.id} value={i.id}>{i.name}</option>
-                ))}
+                {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
               </select>
             </div>
-
             <div className="flex gap-2">
-              <button
-                onClick={() => { setShowAdminModal(false); setAdminLesson(null) }}
-                className="flex-1 bg-gray-100 text-gray-600 rounded-lg py-3 text-sm"
-              >
-                취소
-              </button>
-              <button
-                onClick={handleAdminSave}
-                disabled={adminSaving}
-                className="flex-1 bg-orange-500 text-white rounded-lg py-3 text-sm disabled:opacity-50"
-              >
+              <button onClick={() => { setShowAdminModal(false); setAdminLesson(null) }}
+                className="flex-1 bg-gray-100 text-gray-600 rounded-lg py-3 text-sm">취소</button>
+              <button onClick={handleAdminSave} disabled={adminSaving}
+                className="flex-1 bg-orange-500 text-white rounded-lg py-3 text-sm disabled:opacity-50">
                 {adminSaving ? '저장 중...' : '저장'}
               </button>
             </div>
@@ -437,7 +410,6 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
             <p className="text-sm text-gray-500 mb-4">
               {formatDate(selectedLesson.date)} {PERIOD_LABELS[selectedLesson.period]} · {selectedLesson.subject}
             </p>
-
             <div className="flex gap-2 mb-4">
               <button onClick={() => { setRequestType('substitute'); setMyExchangeLessonId('') }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium ${requestType === 'substitute' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
@@ -448,36 +420,25 @@ export default function ScheduleDetailPage({ params }: { params: Promise<{ id: s
                 🔄 교환
               </button>
             </div>
-
             {requestType === 'exchange' && (
               <div className="mb-4">
                 <p className="text-xs text-gray-500 mb-1">내가 내줄 수업 선택</p>
-                <select
-                  value={myExchangeLessonId}
-                  onChange={(e) => setMyExchangeLessonId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                >
+                <select value={myExchangeLessonId} onChange={(e) => setMyExchangeLessonId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">수업 선택</option>
                   {myLessons.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {formatDate(l.date)} {PERIOD_LABELS[l.period]} · {l.subject}
-                    </option>
+                    <option key={l.id} value={l.id}>{formatDate(l.date)} {PERIOD_LABELS[l.period]} · {l.subject}</option>
                   ))}
                 </select>
               </div>
             )}
-
-            <select
-              value={targetInstructorId}
-              onChange={(e) => setTargetInstructorId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
-            >
+            <select value={targetInstructorId} onChange={(e) => setTargetInstructorId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4">
               <option value="">강사 선택</option>
               {instructors.filter(i => i.id !== user.id).map(i => (
                 <option key={i.id} value={i.id}>{i.name}</option>
               ))}
             </select>
-
             <div className="flex gap-2">
               <button onClick={() => { setShowModal(false); setTargetInstructorId(''); setMyExchangeLessonId('') }}
                 className="flex-1 bg-gray-100 text-gray-600 rounded-lg py-3 text-sm">취소</button>
