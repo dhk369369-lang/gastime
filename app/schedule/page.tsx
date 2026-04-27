@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -25,16 +25,17 @@ const PERIOD_LABELS: Record<number, string> = {
   6: '5교시', 7: '6교시', 8: '7교시', 9: '8교시'
 }
 
-const PERIOD_TIMES: Record<number, { hour: number; minute: number }> = {
-  1: { hour: 9, minute: 20 },
-  2: { hour: 10, minute: 20 },
-  3: { hour: 11, minute: 20 },
-  4: { hour: 12, minute: 10 },
-  5: { hour: 13, minute: 10 },
-  6: { hour: 14, minute: 10 },
-  7: { hour: 15, minute: 10 },
-  8: { hour: 16, minute: 10 },
-  9: { hour: 17, minute: 10 },
+// 알림 시각 (수업 시작 5분 전)
+const NOTIFY_TIMES: Record<number, { hour: number; minute: number }> = {
+  1: { hour: 9, minute: 15 },   // 1교시 09:20 → 09:15 알림
+  2: { hour: 10, minute: 15 },  // 2교시 10:20 → 10:15 알림
+  3: { hour: 11, minute: 15 },  // 3교시 11:20 → 11:15 알림
+  4: { hour: 12, minute: 15 },  // 4-1교시 12:20 → 12:15 알림
+  5: { hour: 13, minute: 5 },   // 4-2교시 13:10 → 13:05 알림
+  6: { hour: 14, minute: 5 },   // 5교시 14:10 → 14:05 알림
+  7: { hour: 15, minute: 5 },   // 6교시 15:10 → 15:05 알림
+  8: { hour: 16, minute: 5 },   // 7교시 16:10 → 16:05 알림
+  9: { hour: 17, minute: 5 },   // 8교시 17:10 → 17:05 알림
 }
 
 export default function SchedulePage() {
@@ -43,6 +44,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   const [todayLessons, setTodayLessons] = useState<TodayLesson[]>([])
   const [notificationEnabled, setNotificationEnabled] = useState(false)
+  const notificationScheduled = useRef(false) // 중복 예약 방지 플래그
   const router = useRouter()
 
   useEffect(() => {
@@ -57,13 +59,15 @@ export default function SchedulePage() {
     setNotificationEnabled(notiSetting === 'true')
   }, [])
 
-  // 오늘 수업 로드 완료 후 알림 자동 예약
+  // 오늘 수업 로드 완료 후 알림 자동 예약 (최초 1회만)
   useEffect(() => {
     if (todayLessons.length === 0) return
+    if (notificationScheduled.current) return // 이미 예약됐으면 스킵
     const notiSetting = localStorage.getItem('notification_enabled')
     if (notiSetting !== 'true') return
     if (typeof Notification === 'undefined') return
     if (Notification.permission !== 'granted') return
+    notificationScheduled.current = true
     scheduleNotifications(todayLessons)
   }, [todayLessons])
 
@@ -98,21 +102,18 @@ export default function SchedulePage() {
     }
   }
 
-  // 교시별 알림 예약 (lessons 인자로 받아서 의존성 문제 방지)
   const scheduleNotifications = (lessons: TodayLesson[]) => {
     const now = new Date()
     let scheduledCount = 0
 
     lessons.forEach(lesson => {
-      const periodTime = PERIOD_TIMES[lesson.period]
-      if (!periodTime) return
+      const notifyTime = NOTIFY_TIMES[lesson.period]
+      if (!notifyTime) return
 
-      const lessonTime = new Date()
-      lessonTime.setHours(periodTime.hour, periodTime.minute, 0, 0)
+      const notifyAt = new Date()
+      notifyAt.setHours(notifyTime.hour, notifyTime.minute, 0, 0)
 
-      // 5분 전 알림 시각
-      const notifyTime = new Date(lessonTime.getTime() - 5 * 60 * 1000)
-      const delay = notifyTime.getTime() - now.getTime()
+      const delay = notifyAt.getTime() - now.getTime()
 
       if (delay > 0) {
         setTimeout(() => {
@@ -122,12 +123,11 @@ export default function SchedulePage() {
           })
         }, delay)
         scheduledCount++
+        console.log(`[알림 예약] ${PERIOD_LABELS[lesson.period]} → ${notifyTime.hour}:${String(notifyTime.minute).padStart(2,'0')} (${Math.round(delay/1000/60)}분 후)`)
       }
     })
 
-    if (scheduledCount > 0) {
-      console.log(`[알림] ${scheduledCount}개 수업 알림 예약 완료`)
-    }
+    console.log(`[알림] ${scheduledCount}개 예약 완료`)
   }
 
   const handleNotificationToggle = async () => {
@@ -140,8 +140,11 @@ export default function SchedulePage() {
       if (permission === 'granted') {
         setNotificationEnabled(true)
         localStorage.setItem('notification_enabled', 'true')
-        // 알림 켜는 순간 바로 예약
-        scheduleNotifications(todayLessons)
+        // 아직 예약 안 됐을 때만 예약
+        if (!notificationScheduled.current) {
+          notificationScheduled.current = true
+          scheduleNotifications(todayLessons)
+        }
         alert('✅ 수업 5분 전 알림이 설정됐어요!')
       } else {
         alert('알림 권한이 거부됐어요. 브라우저 설정에서 허용해주세요.')
