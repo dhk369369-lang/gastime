@@ -63,7 +63,6 @@ export default function SchedulePage() {
     fetchSchedules()
     fetchTodayLessons(parsed.id)
     fetchNotices()
-
     const notiSetting = localStorage.getItem('notification_enabled')
     setNotificationEnabled(notiSetting === 'true')
   }, [])
@@ -215,7 +214,7 @@ export default function SchedulePage() {
         )}
 
         {/* 공지사항 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
           <h2 className="font-bold text-gray-800 mb-3">📢 공지사항</h2>
           {notices.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-2">공지사항이 없습니다.</p>
@@ -243,6 +242,15 @@ export default function SchedulePage() {
             </div>
           )}
         </div>
+
+        {/* 자유게시판 */}
+        <button
+          onClick={() => router.push('/board')}
+          className="w-full bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 text-left flex justify-between items-center hover:border-blue-400 hover:shadow-md transition"
+        >
+          <h2 className="font-bold text-gray-800">💬 자유게시판</h2>
+          <span className="text-blue-500 text-sm">바로가기 →</span>
+        </button>
 
         {/* 주차 목록 */}
         {loading ? (
